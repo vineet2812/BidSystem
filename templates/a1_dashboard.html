@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}A1 Approver Dashboard - Bid Management System{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <h2><i class="bi bi-clipboard-check"></i> A1 Approver Dashboard</h2>
+    <p class="text-muted">Review and approve/reject bids - View all bids</p>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">All Bids</h5>
+    </div>
+    <div class="card-body">
+        {% if bids.empty %}
+            <div class="alert alert-info">
+                <i class="bi bi-info-circle"></i> No bids available at the moment.
+            </div>
+        {% else %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Bid ID</th>
+                            <th>Contract Name</th>
+                            <th>Contract Value</th>
+                            <th>Selected Vendor</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for index, bid in bids.iterrows() %}
+                        <tr class="{{ 'table-warning' if bid.status == 'Pending A1' else '' }}">
+                            <td><strong>{{ bid.bid_id }}</strong></td>
+                            <td>{{ bid.contract_name }}</td>
+                            <td>${{ "{:,.2f}".format(bid.contract_value) }}</td>
+                            <td>{{ bid.selected_vendor_id if bid.selected_vendor_id else '-' }}</td>
+                            <td>
+                                {% if bid.status == 'Pending A1' %}
+                                    <span class="badge bg-warning status-badge">{{ bid.status }} ⚠️</span>
+                                {% elif bid.status == 'Approved' %}
+                                    <span class="badge bg-success status-badge">{{ bid.status }}</span>
+                                {% else %}
+                                    <span class="badge bg-secondary status-badge">{{ bid.status }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{{ url_for('a1_view_bid', bid_id=bid.bid_id) }}" 
+                                   class="btn btn-sm btn-primary">
+                                    <i class="bi bi-eye"></i> View
+                                </a>
+                                {% if bid.status == 'Approved' %}
+                                    <a href="{{ url_for('download_pdf', bid_id=bid.bid_id) }}" 
+                                       class="btn btn-sm btn-success">
+                                        <i class="bi bi-download"></i> PDF
+                                    </a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

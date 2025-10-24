@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Vendor Login{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h4 class="mb-0"><i class="bi bi-person-circle"></i> Vendor Login</h4>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('vendor_login_page') }}">
+                    <div class="mb-3">
+                        <label for="vendor_id" class="form-label">Select Vendor *</label>
+                        <select class="form-select" id="vendor_id" name="vendor_id" required>
+                            <option value="">Choose a vendor...</option>
+                            {% for vendor in vendors %}
+                            <option value="{{ vendor.vendor_id }}">
+                                {{ vendor.vendor_id }} - {{ vendor.vendor_name }} (Rating: {{ vendor.technical_capability }}/5)
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">Select your vendor account to login</div>
+                    </div>
+
+                    <button type="submit" class="btn btn-success w-100">
+                        <i class="bi bi-box-arrow-in-right"></i> Login
+                    </button>
+                </form>
+            </div>
+            <div class="card-footer text-center">
+                <p class="mb-0">Don't have an account? 
+                    <a href="{{ url_for('vendor_register') }}">Register as New Vendor</a>
+                </p>
+            </div>
+        </div>
+
+
+    </div>
+</div>
+{% endblock %}

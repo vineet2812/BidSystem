@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+
+{% block title %}View Bid - Admin{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-sm btn-outline-secondary mb-2">
+        <i class="bi bi-arrow-left"></i> Back to Dashboard
+    </a>
+    <h2><i class="bi bi-file-text"></i> Bid Details: {{ bid.bid_id }}</h2>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <!-- Bid Information -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0">Contract Information</h5>
+            </div>
+            <div class="card-body">
+                <dl class="row">
+                    <dt class="col-sm-4">Bid ID:</dt>
+                    <dd class="col-sm-8"><strong>{{ bid.bid_id }}</strong></dd>
+
+                    <dt class="col-sm-4">Contract Name:</dt>
+                    <dd class="col-sm-8">{{ bid.contract_name }}</dd>
+
+                    <dt class="col-sm-4">Description:</dt>
+                    <dd class="col-sm-8">{{ bid.contract_description }}</dd>
+
+                    <dt class="col-sm-4">Contract Value:</dt>
+                    <dd class="col-sm-8">${{ "{:,.2f}".format(bid.contract_value) }}</dd>
+
+                    <dt class="col-sm-4">Min Technical Rating:</dt>
+                    <dd class="col-sm-8">
+                        {% if bid.min_technical_capability > 0 %}
+                            {{ bid.min_technical_capability }}/5
+                        {% else %}
+                            Not specified
+                        {% endif %}
+                    </dd>
+
+                    <dt class="col-sm-4">Created By:</dt>
+                    <dd class="col-sm-8">{{ bid.admin_name }}</dd>
+
+                    <dt class="col-sm-4">Created Date:</dt>
+                    <dd class="col-sm-8">{{ bid.created_date }}</dd>
+
+                    <dt class="col-sm-4">Status:</dt>
+                    <dd class="col-sm-8">
+                        <span class="badge bg-{{ 'success' if bid.status == 'Approved' else 'warning' }}">
+                            {{ bid.status }}
+                        </span>
+                    </dd>
+                </dl>
+            </div>
+        </div>
+
+        <!-- Bid Items -->
+        {% if not items.empty %}
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-list-ul"></i> Bid Items</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th>Description</th>
+                                <th>Quantity</th>
+                                <th>Unit</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for index, item in items.iterrows() %}
+                            <tr>
+                                <td>{{ item.item_name }}</td>
+                                <td>{{ item.item_description }}</td>
+                                <td>{{ item.quantity }}</td>
+                                <td>{{ item.unit }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Vendor Bids -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0">Vendor Submissions</h5>
+            </div>
+            <div class="card-body">
+                {% if vendor_bids.empty %}
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> No vendor bids submitted yet.
+                    </div>
+                {% else %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Vendor ID</th>
+                                    <th>Vendor Name</th>
+                                    <th>Rating</th>
+                                    <th>Bid Amount</th>
+                                    <th>Proposal Summary</th>
+                                    <th>Submission Date</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for index, vendor_bid in vendor_bids.iterrows() %}
+                                <tr class="{{ 'table-success' if vendor_bid.is_selected else '' }}">
+                                    <td>{{ vendor_bid.vendor_id }}</td>
+                                    <td>{{ vendor_bid.vendor_name }}</td>
+                                    <td>
+                                        <span class="badge bg-info">{{ vendor_bid.technical_capability }}/5</span>
+                                    </td>
+                                    <td>${{ "{:,.2f}".format(vendor_bid.bid_amount) }}</td>
+                                    <td>
+                                        <small>{{ vendor_bid.bid_description[:100] }}{% if vendor_bid.bid_description|length > 100 %}...{% endif %}</small>
+                                    </td>
+                                    <td>{{ vendor_bid.submission_date }}</td>
+                                    <td>
+                                        {% if vendor_bid.is_selected %}
+                                            <span class="badge bg-success">Selected</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Not Selected</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {% if (bid.status == 'Open for Bidding' or bid.status == 'Under Review') and not vendor_bids.empty %}
+                    <hr>
+                    <h6>Select Winning Vendor</h6>
+                    <form method="POST" action="{{ url_for('select_vendor', bid_id=bid.bid_id) }}">
+                        <div class="mb-3">
+                            <label for="vendor_id" class="form-label">Select Vendor *</label>
+                            <select class="form-select" id="vendor_id" name="vendor_id" required>
+                                <option value="">Choose vendor...</option>
+                                {% for index, vendor_bid in vendor_bids.iterrows() %}
+                                <option value="{{ vendor_bid.vendor_id }}" {% if vendor_bid.is_selected %}selected{% endif %}>
+                                    {{ vendor_bid.vendor_name }} - ${{ "{:,.2f}".format(vendor_bid.bid_amount) }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="justification" class="form-label">Justification *</label>
+                            <textarea class="form-control" id="justification" name="justification" 
+                                      rows="3" required placeholder="Explain why this vendor was selected...">{{ bid.admin_justification if bid.admin_justification else '' }}</textarea>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> {% if bid.status == 'Under Review' %}Resubmit for A1 Approval{% else %}Submit for A1 Approval{% endif %}
+                        </button>
+                    </form>
+                    {% endif %}
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- History -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">History & Comments</h5>
+            </div>
+            <div class="card-body">
+                {% if history.empty %}
+                    <p class="text-muted">No history available.</p>
+                {% else %}
+                    <div class="timeline">
+                        {% for index, record in history.iterrows() %}
+                        <div class="mb-3 p-3 border-start border-3 border-primary bg-light">
+                            <div class="d-flex justify-content-between">
+                                <strong>{{ record.action }}</strong>
+                                <small class="text-muted">{{ record.action_date }}</small>
+                            </div>
+                            <div class="text-muted small">
+                                By: {{ record.action_by }} ({{ record.role }})
+                            </div>
+                            {% if record.comment %}
+                            <div class="mt-2">
+                                <em>"{{ record.comment }}"</em>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0">Approval Status</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <strong>Selected Vendor:</strong><br>
+                    {{ bid.selected_vendor_id if bid.selected_vendor_id else 'Not selected yet' }}
+                </div>
+
+                {% if bid.admin_justification %}
+                <div class="mb-3">
+                    <strong>Admin Justification:</strong><br>
+                    <em>{{ bid.admin_justification }}</em>
+                </div>
+                {% endif %}
+
+                <hr>
+
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <strong>A1 Approver:</strong>
+                        <span class="badge bg-{{ 'success' if bid.a1_status == 'Approved' else 'warning' if bid.a1_status == 'Pending' else 'danger' }}">
+                            {{ bid.a1_status }}
+                        </span>
+                    </div>
+                    {% if bid.a1_comment %}
+                    <small class="text-muted">{{ bid.a1_comment }}</small><br>
+                    <small class="text-muted">{{ bid.a1_date }}</small>
+                    {% endif %}
+                </div>
+
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <strong>A2 Approver:</strong>
+                        <span class="badge bg-{{ 'success' if bid.a2_status == 'Approved' else 'warning' if bid.a2_status == 'Pending' else 'danger' }}">
+                            {{ bid.a2_status }}
+                        </span>
+                    </div>
+                    {% if bid.a2_comment %}
+                    <small class="text-muted">{{ bid.a2_comment }}</small><br>
+                    <small class="text-muted">{{ bid.a2_date }}</small>
+                    {% endif %}
+                </div>
+
+                {% if bid.status == 'Approved' %}
+                <hr>
+                <a href="{{ url_for('download_pdf', bid_id=bid.bid_id) }}" 
+                   class="btn btn-success w-100">
+                    <i class="bi bi-download"></i> Download PDF
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

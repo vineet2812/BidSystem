@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block title %}Create Bid - Admin{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <h2><i class="bi bi-file-earmark-plus"></i> Create New Bid</h2>
+</div>
+
+<div class="row">
+    <div class="col-md-9">
+        <div class="card">
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('create_bid') }}" id="bidForm">
+                    <div class="mb-3">
+                        <label for="contract_name" class="form-label">Contract Name *</label>
+                        <input type="text" class="form-control" id="contract_name" 
+                               name="contract_name" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="contract_description" class="form-label">Contract Description *</label>
+                        <textarea class="form-control" id="contract_description" 
+                                  name="contract_description" rows="4" required></textarea>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="contract_value" class="form-label">Contract Value ($) *</label>
+                            <input type="number" class="form-control" id="contract_value" 
+                                   name="contract_value" step="0.01" required>
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <label for="min_technical_capability" class="form-label">Minimum Technical Capability</label>
+                            <select class="form-select" id="min_technical_capability" name="min_technical_capability">
+                                <option value="0">No Requirement</option>
+                                <option value="1">1 - Basic</option>
+                                <option value="2">2 - Below Average</option>
+                                <option value="3">3 - Average</option>
+                                <option value="4">4 - Above Average</option>
+                                <option value="5">5 - Expert/Top Tier</option>
+                            </select>
+                            <div class="form-text">Only vendors meeting this rating can bid</div>
+                        </div>
+                    </div>
+
+                    <hr>
+                    <h5><i class="bi bi-list-ul"></i> Bid Items (Optional)</h5>
+                    <p class="text-muted small">Add specific items or deliverables for this bid</p>
+
+                    <div id="items-container">
+                        <div class="item-row card mb-2 p-3">
+                            <div class="row">
+                                <div class="col-md-3">
+                                    <input type="text" class="form-control" name="item_name[]" 
+                                           placeholder="Item Name">
+                                </div>
+                                <div class="col-md-4">
+                                    <input type="text" class="form-control" name="item_description[]" 
+                                           placeholder="Description">
+                                </div>
+                                <div class="col-md-2">
+                                    <input type="number" class="form-control" name="quantity[]" 
+                                           placeholder="Quantity" step="0.01">
+                                </div>
+                                <div class="col-md-2">
+                                    <input type="text" class="form-control" name="unit[]" 
+                                           placeholder="Unit">
+                                </div>
+                                <div class="col-md-1">
+                                    <button type="button" class="btn btn-danger btn-sm remove-item" 
+                                            onclick="removeItem(this)" style="display:none;">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="button" class="btn btn-sm btn-outline-primary mb-3" onclick="addItem()">
+                        <i class="bi bi-plus-circle"></i> Add Another Item
+                    </button>
+
+                    <hr>
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
+                            <i class="bi bi-arrow-left"></i> Cancel
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> Create Bid
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h5><i class="bi bi-info-circle"></i> Information</h5>
+                <p class="small">
+                    Creating a new bid will make it available for vendors to submit their proposals.
+                </p>
+                <hr>
+                <h6>Technical Capability</h6>
+                <p class="small">
+                    Set minimum rating to filter qualified vendors. Vendors below this rating won't see the bid.
+                </p>
+                <hr>
+                <h6>Bid Items</h6>
+                <p class="small">
+                    Add specific items/deliverables to provide clear requirements to vendors.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function addItem() {
+    const container = document.getElementById('items-container');
+    const newItem = document.createElement('div');
+    newItem.className = 'item-row card mb-2 p-3';
+    newItem.innerHTML = `
+        <div class="row">
+            <div class="col-md-3">
+                <input type="text" class="form-control" name="item_name[]" placeholder="Item Name">
+            </div>
+            <div class="col-md-4">
+                <input type="text" class="form-control" name="item_description[]" placeholder="Description">
+            </div>
+            <div class="col-md-2">
+                <input type="number" class="form-control" name="quantity[]" placeholder="Quantity" step="0.01">
+            </div>
+            <div class="col-md-2">
+                <input type="text" class="form-control" name="unit[]" placeholder="Unit">
+            </div>
+            <div class="col-md-1">
+                <button type="button" class="btn btn-danger btn-sm remove-item" onclick="removeItem(this)">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+        </div>
+    `;
+    container.appendChild(newItem);
+    updateRemoveButtons();
+}
+
+function removeItem(button) {
+    button.closest('.item-row').remove();
+    updateRemoveButtons();
+}
+
+function updateRemoveButtons() {
+    const items = document.querySelectorAll('.item-row');
+    items.forEach((item, index) => {
+        const removeBtn = item.querySelector('.remove-item');
+        if (items.length > 1) {
+            removeBtn.style.display = 'block';
+        } else {
+            removeBtn.style.display = 'none';
+        }
+    });
+}
+</script>
+{% endblock %}

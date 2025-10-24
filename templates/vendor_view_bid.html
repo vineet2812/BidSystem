@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+
+{% block title %}Submit Bid - Vendor{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <a href="{{ url_for('vendor_dashboard') }}" class="btn btn-sm btn-outline-secondary mb-2">
+        <i class="bi bi-arrow-left"></i> Back to Dashboard
+    </a>
+    <h2><i class="bi bi-file-earmark-text"></i> Submit Bid: {{ bid.bid_id }}</h2>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-3">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Contract Details</h5>
+            </div>
+            <div class="card-body">
+                <dl class="row">
+                    <dt class="col-sm-4">Contract Name:</dt>
+                    <dd class="col-sm-8">{{ bid.contract_name }}</dd>
+
+                    <dt class="col-sm-4">Description:</dt>
+                    <dd class="col-sm-8">{{ bid.contract_description }}</dd>
+
+                    <dt class="col-sm-4">Contract Value:</dt>
+                    <dd class="col-sm-8">${{ "{:,.2f}".format(bid.contract_value) }}</dd>
+
+                    <dt class="col-sm-4">Min Technical Rating:</dt>
+                    <dd class="col-sm-8">
+                        {% if bid.min_technical_capability > 0 %}
+                            {{ bid.min_technical_capability }}/5
+                            <span class="badge bg-success">You qualify ({{ vendor.technical_capability }}/5)</span>
+                        {% else %}
+                            Not specified
+                        {% endif %}
+                    </dd>
+
+                    <dt class="col-sm-4">Created Date:</dt>
+                    <dd class="col-sm-8">{{ bid.created_date }}</dd>
+                </dl>
+            </div>
+        </div>
+
+        {% if not items.empty %}
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-list-ul"></i> Required Items/Deliverables</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th>Description</th>
+                                <th>Quantity</th>
+                                <th>Unit</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for index, item in items.iterrows() %}
+                            <tr>
+                                <td>{{ item.item_name }}</td>
+                                <td>{{ item.item_description }}</td>
+                                <td>{{ item.quantity }}</td>
+                                <td>{{ item.unit }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">Submit Your Bid</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <strong>Submitting as:</strong> {{ vendor.vendor_name }} ({{ vendor.vendor_id }})
+                    <br>
+                    <strong>Your Technical Rating:</strong> {{ vendor.technical_capability }}/5
+                </div>
+
+                <form method="POST" action="{{ url_for('submit_bid', bid_id=bid.bid_id) }}">
+                    <div class="mb-3">
+                        <label for="bid_amount" class="form-label">Your Bid Amount ($) *</label>
+                        <input type="number" class="form-control" id="bid_amount" 
+                               name="bid_amount" step="0.01" required>
+                        <div class="form-text">Enter your competitive bid amount for this contract</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="bid_description" class="form-label">Bid Description/Proposal *</label>
+                        <textarea class="form-control" id="bid_description" name="bid_description" 
+                                  rows="5" required placeholder="Describe your proposal, capabilities, timeline, etc."></textarea>
+                    </div>
+
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('vendor_dashboard') }}" class="btn btn-secondary">
+                            <i class="bi bi-arrow-left"></i> Cancel
+                        </a>
+                        <button type="submit" class="btn btn-success">
+                            <i class="bi bi-check-circle"></i> Submit Bid
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h5><i class="bi bi-info-circle"></i> Submission Guidelines</h5>
+                <ul class="small">
+                    <li>Review the contract details carefully</li>
+                    <li>Review all required items/deliverables</li>
+                    <li>Provide a competitive bid amount</li>
+                    <li>Include detailed proposal information</li>
+                    <li>Ensure all information is accurate</li>
+                    <li>Submit before the deadline</li>
+                </ul>
+                <hr>
+                <p class="small mb-0">
+                    <strong>Note:</strong> Once submitted, you cannot edit your bid.
+                </p>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header">
+                <h6 class="mb-0">Your Profile</h6>
+            </div>
+            <div class="card-body">
+                <p class="small mb-1"><strong>Company:</strong> {{ vendor.vendor_name }}</p>
+                <p class="small mb-1"><strong>Email:</strong> {{ vendor.contact_email }}</p>
+                <p class="small mb-1"><strong>Phone:</strong> {{ vendor.contact_phone }}</p>
+                <p class="small mb-0"><strong>Rating:</strong> {{ vendor.technical_capability }}/5</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
