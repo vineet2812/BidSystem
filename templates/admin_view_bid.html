@@ -106,6 +106,7 @@
                                 <tr>
                                     <th>Vendor ID</th>
                                     <th>Vendor Name</th>
+                                    <th>Submission ID</th>
                                     <th>Rating</th>
                                     <th>Bid Amount</th>
                                     <th>Proposal Summary</th>
@@ -118,6 +119,7 @@
                                 <tr class="{{ 'table-success' if vendor_bid.is_selected else '' }}">
                                     <td>{{ vendor_bid.vendor_id }}</td>
                                     <td>{{ vendor_bid.vendor_name }}</td>
+                                    <td>{{ vendor_bid.submission_id }}</td>
                                     <td>
                                         <span class="badge bg-info">{{ vendor_bid.technical_capability }}/5</span>
                                     </td>
@@ -144,12 +146,12 @@
                     <h6>Select Winning Vendor</h6>
                     <form method="POST" action="{{ url_for('select_vendor', bid_id=bid.bid_id) }}">
                         <div class="mb-3">
-                            <label for="vendor_id" class="form-label">Select Vendor *</label>
-                            <select class="form-select" id="vendor_id" name="vendor_id" required>
-                                <option value="">Choose vendor...</option>
+                            <label for="submission_id" class="form-label">Select Submission *</label>
+                            <select class="form-select" id="submission_id" name="submission_id" required>
+                                <option value="">Choose submission...</option>
                                 {% for index, vendor_bid in vendor_bids.iterrows() %}
-                                <option value="{{ vendor_bid.vendor_id }}" {% if vendor_bid.is_selected %}selected{% endif %}>
-                                    {{ vendor_bid.vendor_name }} - ${{ "{:,.2f}".format(vendor_bid.bid_amount) }}
+                                <option value="{{ vendor_bid.submission_id }}" {% if vendor_bid.is_selected %}selected{% endif %}>
+                                    {{ vendor_bid.submission_id }} | {{ vendor_bid.vendor_name }} - ${{ "{:,.2f}".format(vendor_bid.bid_amount) }}
                                 </option>
                                 {% endfor %}
                             </select>
@@ -159,6 +161,18 @@
                             <label for="justification" class="form-label">Justification *</label>
                             <textarea class="form-control" id="justification" name="justification" 
                                       rows="3" required placeholder="Explain why this vendor was selected...">{{ bid.admin_justification if bid.admin_justification else '' }}</textarea>
+                        </div>
+
+                        <div class="mb-3">
+                            <strong>Selected Submission:</strong><br>
+                            {% if not selected_vendor_bid.empty %}
+                                {% set selected = selected_vendor_bid.iloc[0] %}
+                                <div class="small text-muted">{{ selected.submission_id }}</div>
+                                <div><strong>{{ selected.vendor_name }}</strong> ({{ selected.vendor_id }})</div>
+                                <div class="small">${{ "{:,.2f}".format(selected.bid_amount) }}</div>
+                            {% else %}
+                                <span class="text-muted">Not selected yet</span>
+                            {% endif %}
                         </div>
 
                         <button type="submit" class="btn btn-primary">
@@ -209,8 +223,15 @@
             </div>
             <div class="card-body">
                 <div class="mb-3">
-                    <strong>Selected Vendor:</strong><br>
-                    {{ bid.selected_vendor_id if bid.selected_vendor_id else 'Not selected yet' }}
+                    <strong>Selected Submission:</strong><br>
+                    {% if not selected_vendor_bid.empty %}
+                        {% set selected = selected_vendor_bid.iloc[0] %}
+                        <div class="small text-muted">{{ selected.submission_id }}</div>
+                        <div><strong>{{ selected.vendor_name }}</strong> ({{ selected.vendor_id }})</div>
+                        <div class="small">${{ "{:,.2f}".format(selected.bid_amount) }}</div>
+                    {% else %}
+                        <span class="text-muted">Not selected yet</span>
+                    {% endif %}
                 </div>
 
                 {% if bid.admin_justification %}
@@ -257,6 +278,29 @@
                 {% endif %}
             </div>
         </div>
+
+        {% if not selected_vendor_bid.empty %}
+        {% set selected = selected_vendor_bid.iloc[0] %}
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5 class="mb-0">Winning Submission Details</h5>
+            </div>
+            <div class="card-body small">
+                <dl class="row mb-0">
+                    <dt class="col-5">Submission ID</dt>
+                    <dd class="col-7">{{ selected.submission_id }}</dd>
+                    <dt class="col-5">Vendor</dt>
+                    <dd class="col-7">{{ selected.vendor_name }} ({{ selected.vendor_id }})</dd>
+                    <dt class="col-5">Bid Amount</dt>
+                    <dd class="col-7">${{ "{:,.2f}".format(selected.bid_amount) }}</dd>
+                    <dt class="col-5">Contact Email</dt>
+                    <dd class="col-7">{{ selected_vendor_contact.contact_email if selected_vendor_contact.contact_email else 'N/A' }}</dd>
+                    <dt class="col-5">Contact Phone</dt>
+                    <dd class="col-7">{{ selected_vendor_contact.contact_phone if selected_vendor_contact.contact_phone else 'N/A' }}</dd>
+                </dl>
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

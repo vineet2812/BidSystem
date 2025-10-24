@@ -7,6 +7,25 @@ import os
 
 DATABASE_FILE = 'database.xlsx'
 
+
+def current_timestamp():
+    """Return the current timestamp string in a consistent format"""
+    return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+
+def reset_approval_columns(bids_df, bid_id):
+    """Reset approval-related columns back to their default pending state"""
+    reset_fields = {
+        'a1_status': 'Pending',
+        'a1_comment': '',
+        'a1_date': '',
+        'a2_status': 'Pending',
+        'a2_comment': '',
+        'a2_date': ''
+    }
+    for column, value in reset_fields.items():
+        bids_df.loc[bids_df['bid_id'] == bid_id, column] = value
+
 def read_sheet(sheet_name):
     """Read data from a specific sheet"""
     try:
@@ -106,18 +125,19 @@ def create_bid(contract_name, contract_description, contract_value, admin_name, 
         'contract_description': contract_description,
         'contract_value': contract_value,
         'min_technical_capability': min_technical_capability,
-        'created_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'created_date': current_timestamp(),
         'admin_name': admin_name,
         'status': 'Open for Bidding',
-        'selected_vendor_id': None,
-        'admin_justification': None,
-        'submission_date': None,
-        'a1_status': 'Pending',
-        'a1_comment': None,
-        'a1_date': None,
-        'a2_status': 'Pending',
-        'a2_comment': None,
-        'a2_date': None
+        'selected_vendor_id': '',
+        'selected_submission_id': '',
+        'admin_justification': '',
+        'submission_date': '',
+    'a1_status': 'Pending',
+    'a1_comment': '',
+    'a1_date': '',
+    'a2_status': 'Pending',
+    'a2_comment': '',
+    'a2_date': ''
     }
     
     bids_df = pd.concat([bids_df, pd.DataFrame([new_bid])], ignore_index=True)
@@ -140,7 +160,7 @@ def submit_vendor_bid(bid_id, vendor_id, vendor_name, bid_amount, bid_descriptio
         'vendor_name': vendor_name,
         'bid_amount': bid_amount,
         'bid_description': bid_description,
-        'submission_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'submission_date': current_timestamp(),
         'is_selected': False
     }
     
@@ -153,41 +173,58 @@ def submit_vendor_bid(bid_id, vendor_id, vendor_name, bid_amount, bid_descriptio
     
     return new_submission['submission_id']
 
-def select_vendor_and_submit_for_approval(bid_id, vendor_id, justification, admin_name):
-    """Admin selects vendor and submits for A1 approval"""
+def select_vendor_and_submit_for_approval(bid_id, submission_id, justification, admin_name):
+    """Admin selects a specific vendor submission and submits for A1 approval"""
     bids_df = read_sheet('Bids')
     vendor_bids_df = read_sheet('VendorBids')
-    
-    # Get current status for history
-    current_status = bids_df.loc[bids_df['bid_id'] == bid_id, 'status'].values[0]
-    
-    # Update bid status and reset approval statuses
+
+    bid_row = bids_df[bids_df['bid_id'] == bid_id]
+    if bid_row.empty:
+        return False, f"Bid {bid_id} not found"
+
+    normalized_submission_id = str(submission_id).strip()
+    normalized_bid_id = str(bid_id).strip()
+
+    submission_row = vendor_bids_df[
+        (vendor_bids_df['bid_id'].astype(str) == normalized_bid_id) &
+        (vendor_bids_df['submission_id'].astype(str) == normalized_submission_id)
+    ]
+
+    if submission_row.empty:
+        return False, "Selected submission could not be located for this bid"
+
+    vendor_id = submission_row.iloc[0]['vendor_id']
+    current_status = bid_row.iloc[0]['status']
+
     bids_df.loc[bids_df['bid_id'] == bid_id, 'selected_vendor_id'] = vendor_id
+    bids_df.loc[bids_df['bid_id'] == bid_id, 'selected_submission_id'] = normalized_submission_id
     bids_df.loc[bids_df['bid_id'] == bid_id, 'admin_justification'] = justification
-    bids_df.loc[bids_df['bid_id'] == bid_id, 'submission_date'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    bids_df.loc[bids_df['bid_id'] == bid_id, 'submission_date'] = current_timestamp()
     bids_df.loc[bids_df['bid_id'] == bid_id, 'status'] = 'Pending A1'
-    
-    # Reset A1 and A2 approval statuses for resubmission
-    bids_df.loc[bids_df['bid_id'] == bid_id, 'a1_status'] = 'Pending'
-    bids_df.loc[bids_df['bid_id'] == bid_id, 'a1_comment'] = ''
-    bids_df.loc[bids_df['bid_id'] == bid_id, 'a1_date'] = ''
-    bids_df.loc[bids_df['bid_id'] == bid_id, 'a2_status'] = 'Pending'
-    bids_df.loc[bids_df['bid_id'] == bid_id, 'a2_comment'] = ''
-    bids_df.loc[bids_df['bid_id'] == bid_id, 'a2_date'] = ''
-    
+
+    reset_approval_columns(bids_df, bid_id)
     write_sheet(bids_df, 'Bids')
-    
-    # Reset all vendor selections first, then mark the selected one
+
     vendor_bids_df.loc[vendor_bids_df['bid_id'] == bid_id, 'is_selected'] = False
-    vendor_bids_df.loc[(vendor_bids_df['bid_id'] == bid_id) & 
-                       (vendor_bids_df['vendor_id'] == vendor_id), 'is_selected'] = True
+    vendor_bids_df.loc[
+        (vendor_bids_df['bid_id'].astype(str) == normalized_bid_id) &
+        (vendor_bids_df['submission_id'].astype(str) == normalized_submission_id),
+        'is_selected'
+    ] = True
     write_sheet(vendor_bids_df, 'VendorBids')
-    
-    # Add to history
-    action_text = 'Resubmitted for A1 Approval' if current_status == 'Under Review' else 'Selected Vendor & Submitted for A1 Approval'
-    add_history(bid_id, admin_name, 'Admin', action_text, 
-                f"Selected Vendor: {vendor_id}, Justification: {justification}", 
-                current_status, 'Pending A1')
+
+    action_text = 'Resubmitted for A1 Approval' if current_status == 'Under Review' else 'Selected Submission & Submitted for A1 Approval'
+    add_history(
+        bid_id,
+        admin_name,
+        'Admin',
+        action_text,
+        f"Selected Submission: {normalized_submission_id} (Vendor: {vendor_id}), Justification: {justification}",
+        current_status,
+        'Pending A1'
+    )
+
+    return True, vendor_id
 
 def a1_approve(bid_id, comment, approver_name):
     """A1 Approver approves the bid"""
@@ -195,7 +232,7 @@ def a1_approve(bid_id, comment, approver_name):
     
     bids_df.loc[bids_df['bid_id'] == bid_id, 'a1_status'] = 'Approved'
     bids_df.loc[bids_df['bid_id'] == bid_id, 'a1_comment'] = comment
-    bids_df.loc[bids_df['bid_id'] == bid_id, 'a1_date'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    bids_df.loc[bids_df['bid_id'] == bid_id, 'a1_date'] = current_timestamp()
     bids_df.loc[bids_df['bid_id'] == bid_id, 'status'] = 'Pending A2'
     
     write_sheet(bids_df, 'Bids')
@@ -209,7 +246,7 @@ def a1_reject(bid_id, comment, approver_name):
     
     bids_df.loc[bids_df['bid_id'] == bid_id, 'a1_status'] = 'Rejected'
     bids_df.loc[bids_df['bid_id'] == bid_id, 'a1_comment'] = comment
-    bids_df.loc[bids_df['bid_id'] == bid_id, 'a1_date'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    bids_df.loc[bids_df['bid_id'] == bid_id, 'a1_date'] = current_timestamp()
     bids_df.loc[bids_df['bid_id'] == bid_id, 'status'] = 'Under Review'
     
     write_sheet(bids_df, 'Bids')
@@ -223,7 +260,7 @@ def a2_approve(bid_id, comment, approver_name):
     
     bids_df.loc[bids_df['bid_id'] == bid_id, 'a2_status'] = 'Approved'
     bids_df.loc[bids_df['bid_id'] == bid_id, 'a2_comment'] = comment
-    bids_df.loc[bids_df['bid_id'] == bid_id, 'a2_date'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    bids_df.loc[bids_df['bid_id'] == bid_id, 'a2_date'] = current_timestamp()
     bids_df.loc[bids_df['bid_id'] == bid_id, 'status'] = 'Approved'
     
     write_sheet(bids_df, 'Bids')
@@ -237,7 +274,7 @@ def a2_reject(bid_id, comment, approver_name):
     
     bids_df.loc[bids_df['bid_id'] == bid_id, 'a2_status'] = 'Rejected'
     bids_df.loc[bids_df['bid_id'] == bid_id, 'a2_comment'] = comment
-    bids_df.loc[bids_df['bid_id'] == bid_id, 'a2_date'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    bids_df.loc[bids_df['bid_id'] == bid_id, 'a2_date'] = current_timestamp()
     bids_df.loc[bids_df['bid_id'] == bid_id, 'status'] = 'Pending A1'
     bids_df.loc[bids_df['bid_id'] == bid_id, 'a1_status'] = 'Pending'
     
@@ -246,6 +283,28 @@ def a2_reject(bid_id, comment, approver_name):
     # Add to history
     add_history(bid_id, approver_name, 'A2 Approver', 'Rejected - Sent back to A1', comment, 'Pending A2', 'Pending A1')
 
+def a2_reopen_bid(bid_id, comment, approver_name):
+    """A2 Approver reopens an approved bid for modifications"""
+    bids_df = read_sheet('Bids')
+    vendor_bids_df = read_sheet('VendorBids')
+
+    # Reset bid to Open for Bidding status so admin can edit and resubmit
+    bids_df.loc[bids_df['bid_id'] == bid_id, 'status'] = 'Open for Bidding'
+    reset_approval_columns(bids_df, bid_id)
+    bids_df.loc[bids_df['bid_id'] == bid_id, 'selected_vendor_id'] = ''
+    bids_df.loc[bids_df['bid_id'] == bid_id, 'selected_submission_id'] = ''
+    bids_df.loc[bids_df['bid_id'] == bid_id, 'admin_justification'] = ''
+    bids_df.loc[bids_df['bid_id'] == bid_id, 'submission_date'] = ''
+
+    write_sheet(bids_df, 'Bids')
+
+    # Clear any previously selected vendor flags for this bid
+    vendor_bids_df.loc[vendor_bids_df['bid_id'] == bid_id, 'is_selected'] = False
+    write_sheet(vendor_bids_df, 'VendorBids')
+
+    # Add to history
+    add_history(bid_id, approver_name, 'A2 Approver', 'Reopened Bid for Modifications', comment, 'Approved', 'Open for Bidding')
+
 def add_history(bid_id, action_by, role, action, comment, previous_status, new_status):
     """Add entry to history"""
     history_df = read_sheet('History')
@@ -253,7 +312,7 @@ def add_history(bid_id, action_by, role, action, comment, previous_status, new_s
     new_history = {
         'history_id': get_next_history_id(),
         'bid_id': bid_id,
-        'action_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'action_date': current_timestamp(),
         'action_by': action_by,
         'role': role,
         'action': action,

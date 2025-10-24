@@ -6,6 +6,8 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 import db_helper as db
 from datetime import datetime
 import io
+import math
+import textwrap
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import inch
@@ -15,6 +17,115 @@ app.secret_key = 'your-secret-key-change-this-in-production'
 
 # Role management
 ROLES = ['Admin', 'Vendor', 'A1 Approver', 'A2 Approver']
+
+
+def _is_missing_excel_value(value):
+    """Detect whether a cell value from Excel should be treated as empty"""
+    if value is None:
+        return True
+    try:
+        if math.isnan(value):
+            return True
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, str) and value.strip().lower() in {'', 'nan', 'nat', 'none'}:
+        return True
+    return False
+
+
+def sanitize_excel_value(value, default=''):
+    """Return a safe default when Excel data is missing"""
+    return default if _is_missing_excel_value(value) else value
+
+
+def normalize_bid_record(bid_record):
+    """Coerce optional bid fields to predictable defaults"""
+    if not bid_record:
+        return {}
+
+    normalized = bid_record.copy()
+    for key in [
+        'selected_vendor_id',
+        'selected_submission_id',
+        'admin_justification',
+        'submission_date',
+        'a1_comment',
+        'a1_date',
+        'a2_comment',
+        'a2_date'
+    ]:
+        normalized[key] = sanitize_excel_value(normalized.get(key), '')
+    return normalized
+
+
+def _normalize_bool_flag(value):
+    """Standardise truthy flags stored in Excel"""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return int(value) == 1
+    return str(value).strip().lower() in {'true', '1', 'yes', 'selected'}
+
+
+def prepare_vendor_bids(bid_id):
+    """Fetch vendor submissions with consistent typing and metadata"""
+    vendor_bids = db.get_vendor_bids_for_bid(bid_id)
+    if vendor_bids.empty:
+        return vendor_bids, {}
+
+    vendor_bids = vendor_bids.copy()
+    if 'submission_id' not in vendor_bids.columns:
+        vendor_bids['submission_id'] = ''
+    vendor_bids['submission_id'] = vendor_bids['submission_id'].fillna('').astype(str).str.strip()
+
+    if 'vendor_id' not in vendor_bids.columns:
+        vendor_bids['vendor_id'] = ''
+    vendor_bids['vendor_id'] = vendor_bids['vendor_id'].fillna('').astype(str).str.strip()
+
+    if 'is_selected' not in vendor_bids.columns:
+        vendor_bids['is_selected'] = False
+    vendor_bids['is_selected'] = vendor_bids['is_selected'].apply(_normalize_bool_flag)
+
+    vendor_lookup = {}
+    for vid in vendor_bids['vendor_id'].unique():
+        vendor = db.get_vendor_by_id(vid)
+        if vendor:
+            vendor_lookup[vid] = vendor
+
+    vendor_bids['technical_capability'] = vendor_bids['vendor_id'].map(
+        lambda vid: vendor_lookup.get(vid, {}).get('technical_capability', 'N/A')
+    )
+
+    return vendor_bids, vendor_lookup
+
+
+def get_selected_submission(bid_record, vendor_bids):
+    """Locate the DataFrame row for the winning submission"""
+    if vendor_bids.empty:
+        return vendor_bids
+
+    selected_submission_id = str(sanitize_excel_value(bid_record.get('selected_submission_id'), '')).strip()
+    selected_vendor_id = str(sanitize_excel_value(bid_record.get('selected_vendor_id'), '')).strip()
+
+    if selected_submission_id:
+        selected_rows = vendor_bids[vendor_bids['submission_id'] == selected_submission_id]
+        if not selected_rows.empty:
+            return selected_rows
+
+    selected_rows = vendor_bids[vendor_bids['is_selected'] == True]
+    if not selected_rows.empty:
+        if selected_vendor_id:
+            vendor_match = selected_rows[selected_rows['vendor_id'] == selected_vendor_id]
+            if not vendor_match.empty:
+                return vendor_match
+        return selected_rows
+
+    if selected_vendor_id:
+        fallback = vendor_bids[vendor_bids['vendor_id'] == selected_vendor_id]
+        if not fallback.empty:
+            return fallback
+
+    return vendor_bids.iloc[0:0]
 
 @app.route('/')
 def index():
@@ -168,20 +279,31 @@ def admin_view_bid(bid_id):
         flash('Access denied. Admin role required.', 'danger')
         return redirect(url_for('index'))
     
-    bid = db.get_bid_by_id(bid_id)
-    vendor_bids = db.get_vendor_bids_for_bid(bid_id)
+    raw_bid = db.get_bid_by_id(bid_id)
+    if not raw_bid:
+        flash('Bid not found.', 'danger')
+        return redirect(url_for('admin_dashboard'))
+
+    bid = normalize_bid_record(raw_bid)
+    vendor_bids, vendors_lookup = prepare_vendor_bids(bid_id)
+    selected_vendor_bid = get_selected_submission(bid, vendor_bids)
     history = db.get_history_for_bid(bid_id)
     items = db.get_items_for_bid(bid_id)
-    
-    # Add technical capability to vendor bids
-    if not vendor_bids.empty:
-        vendor_bids = vendor_bids.copy()
-        vendor_bids['technical_capability'] = vendor_bids['vendor_id'].apply(
-            lambda vid: db.get_vendor_by_id(vid).get('technical_capability', 'N/A') if db.get_vendor_by_id(vid) else 'N/A'
-        )
-    
-    return render_template('admin_view_bid.html', bid=bid, vendor_bids=vendor_bids, 
-                          history=history, items=items, role=session.get('role'))
+
+    selected_vendor_contact = {}
+    if not selected_vendor_bid.empty:
+        selected_vendor_contact = vendors_lookup.get(selected_vendor_bid.iloc[0]['vendor_id'], {})
+
+    return render_template(
+        'admin_view_bid.html',
+        bid=bid,
+        vendor_bids=vendor_bids,
+        selected_vendor_bid=selected_vendor_bid,
+        selected_vendor_contact=selected_vendor_contact,
+        history=history,
+        items=items,
+        role=session.get('role')
+    )
 
 @app.route('/admin/select_vendor/<bid_id>', methods=['POST'])
 def select_vendor(bid_id):
@@ -190,12 +312,18 @@ def select_vendor(bid_id):
         flash('Access denied. Admin role required.', 'danger')
         return redirect(url_for('index'))
     
-    vendor_id = request.form['vendor_id']
+    submission_id = request.form['submission_id']
     justification = request.form['justification']
     admin_name = session.get('user_name', 'Admin')
-    
-    db.select_vendor_and_submit_for_approval(bid_id, vendor_id, justification, admin_name)
-    flash('Vendor selected and submitted for A1 approval!', 'success')
+
+    success, detail = db.select_vendor_and_submit_for_approval(bid_id, submission_id, justification, admin_name)
+    if not success:
+        flash(detail, 'danger')
+        return redirect(url_for('admin_view_bid', bid_id=bid_id))
+
+    vendor = db.get_vendor_by_id(detail)
+    vendor_label = vendor['vendor_name'] if vendor else detail
+    flash(f'Submission {submission_id} from {vendor_label} submitted for A1 approval!', 'success')
     
     return redirect(url_for('admin_view_bid', bid_id=bid_id))
 
@@ -233,7 +361,12 @@ def vendor_view_bid(bid_id):
         flash('Please login first!', 'warning')
         return redirect(url_for('vendor_login_page'))
     
-    bid = db.get_bid_by_id(bid_id)
+    raw_bid = db.get_bid_by_id(bid_id)
+    if not raw_bid:
+        flash('Bid not found.', 'danger')
+        return redirect(url_for('a2_dashboard'))
+
+    bid = normalize_bid_record(raw_bid)
     items = db.get_items_for_bid(bid_id)
     vendor = db.get_vendor_by_id(session.get('vendor_id'))
     
@@ -275,24 +408,22 @@ def a1_view_bid(bid_id):
         flash('Access denied. A1 Approver role required.', 'danger')
         return redirect(url_for('index'))
     
-    bid = db.get_bid_by_id(bid_id)
-    
+    raw_bid = db.get_bid_by_id(bid_id)
+    if not raw_bid:
+        flash('Bid not found.', 'danger')
+        return redirect(url_for('a1_dashboard'))
+
+    bid = normalize_bid_record(raw_bid)
+
     # Check if bid has been submitted for approval
     if bid['status'] not in ['Pending A1', 'Pending A2', 'Approved', 'Rejected']:
         flash('This bid has not been submitted for approval yet!', 'warning')
         return redirect(url_for('a1_dashboard'))
     
-    vendor_bids = db.get_vendor_bids_for_bid(bid_id)
+    vendor_bids, _ = prepare_vendor_bids(bid_id)
     history = db.get_history_for_bid(bid_id)
     items = db.get_items_for_bid(bid_id)
-    selected_vendor_bid = vendor_bids[vendor_bids['is_selected'] == True]
-    
-    # Add technical capability to vendor bids
-    if not vendor_bids.empty:
-        vendor_bids = vendor_bids.copy()
-        vendor_bids['technical_capability'] = vendor_bids['vendor_id'].apply(
-            lambda vid: db.get_vendor_by_id(vid).get('technical_capability', 'N/A') if db.get_vendor_by_id(vid) else 'N/A'
-        )
+    selected_vendor_bid = get_selected_submission(bid, vendor_bids)
     
     return render_template('a1_view_bid.html', bid=bid, vendor_bid=selected_vendor_bid, 
                           vendor_bids=vendor_bids, history=history, items=items, role=session.get('role'))
@@ -306,6 +437,9 @@ def a1_approve_bid(bid_id):
     
     # Check if bid has been submitted for approval
     bid = db.get_bid_by_id(bid_id)
+    if not bid:
+        flash('Bid not found.', 'danger')
+        return redirect(url_for('a1_dashboard'))
     if bid['status'] != 'Pending A1':
         flash('This bid has not been submitted for approval yet!', 'danger')
         return redirect(url_for('a1_dashboard'))
@@ -327,6 +461,9 @@ def a1_reject_bid(bid_id):
     
     # Check if bid has been submitted for approval
     bid = db.get_bid_by_id(bid_id)
+    if not bid:
+        flash('Bid not found.', 'danger')
+        return redirect(url_for('a1_dashboard'))
     if bid['status'] != 'Pending A1':
         flash('This bid has not been submitted for approval yet!', 'danger')
         return redirect(url_for('a1_dashboard'))
@@ -364,17 +501,10 @@ def a2_view_bid(bid_id):
         flash('This bid has not been approved by A1 yet!', 'warning')
         return redirect(url_for('a2_dashboard'))
     
-    vendor_bids = db.get_vendor_bids_for_bid(bid_id)
+    vendor_bids, _ = prepare_vendor_bids(bid_id)
     history = db.get_history_for_bid(bid_id)
     items = db.get_items_for_bid(bid_id)
-    selected_vendor_bid = vendor_bids[vendor_bids['is_selected'] == True]
-    
-    # Add technical capability to vendor bids
-    if not vendor_bids.empty:
-        vendor_bids = vendor_bids.copy()
-        vendor_bids['technical_capability'] = vendor_bids['vendor_id'].apply(
-            lambda vid: db.get_vendor_by_id(vid).get('technical_capability', 'N/A') if db.get_vendor_by_id(vid) else 'N/A'
-        )
+    selected_vendor_bid = get_selected_submission(bid, vendor_bids)
     
     return render_template('a2_view_bid.html', bid=bid, vendor_bid=selected_vendor_bid, 
                           vendor_bids=vendor_bids, history=history, items=items, role=session.get('role'))
@@ -388,6 +518,9 @@ def a2_approve_bid(bid_id):
     
     # Check if bid has been approved by A1
     bid = db.get_bid_by_id(bid_id)
+    if not bid:
+        flash('Bid not found.', 'danger')
+        return redirect(url_for('a2_dashboard'))
     if bid['status'] != 'Pending A2':
         flash('This bid has not been approved by A1 yet!', 'danger')
         return redirect(url_for('a2_dashboard'))
@@ -409,6 +542,9 @@ def a2_reject_bid(bid_id):
     
     # Check if bid has been approved by A1
     bid = db.get_bid_by_id(bid_id)
+    if not bid:
+        flash('Bid not found.', 'danger')
+        return redirect(url_for('a2_dashboard'))
     if bid['status'] != 'Pending A2':
         flash('This bid has not been approved by A1 yet!', 'danger')
         return redirect(url_for('a2_dashboard'))
@@ -421,26 +557,49 @@ def a2_reject_bid(bid_id):
     
     return redirect(url_for('a2_dashboard'))
 
+@app.route('/a2/reopen/<bid_id>', methods=['POST'])
+def a2_reopen_bid(bid_id):
+    """A2 reopen approved bid for modifications"""
+    if session.get('role') != 'A2 Approver':
+        flash('Access denied. A2 Approver role required.', 'danger')
+        return redirect(url_for('index'))
+    
+    # Check if bid is approved
+    bid = db.get_bid_by_id(bid_id)
+    if not bid:
+        flash('Bid not found.', 'danger')
+        return redirect(url_for('a2_dashboard'))
+    if bid['status'] != 'Approved':
+        flash('Only approved bids can be reopened!', 'danger')
+        return redirect(url_for('a2_dashboard'))
+    
+    comment = request.form['comment']
+    approver_name = session.get('user_name', 'A2 Approver')
+    
+    db.a2_reopen_bid(bid_id, comment, approver_name)
+    flash('Bid has been reopened for modifications!', 'info')
+    
+    return redirect(url_for('a2_dashboard'))
+
 @app.route('/download_pdf/<bid_id>')
 def download_pdf(bid_id):
     """Download bid approval PDF - Accessible by all roles"""
     bid = db.get_bid_by_id(bid_id)
+    if not bid:
+        flash('Bid not found.', 'danger')
+        return redirect(url_for('index'))
     
     if bid['status'] != 'Approved':
         flash('PDF download only available for approved bids!', 'danger')
         return redirect(url_for('index'))
     
-    vendor_bids = db.get_vendor_bids_for_bid(bid_id)
-    selected_vendor = vendor_bids[vendor_bids['is_selected'] == True]
+    bid = normalize_bid_record(bid)
+    vendor_bids, vendors_dict = prepare_vendor_bids(bid_id)
+    selected_vendor = get_selected_submission(bid, vendor_bids)
+    selected_submission_id = str(sanitize_excel_value(bid.get('selected_submission_id'), '')).strip()
+    selected_vendor_id = str(sanitize_excel_value(bid.get('selected_vendor_id'), '')).strip()
     history = db.get_history_for_bid(bid_id)
     items = db.get_items_for_bid(bid_id)
-    
-    # Get vendor details for technical capability info
-    vendors_dict = {}
-    for _, vb in vendor_bids.iterrows():
-        vendor = db.get_vendor_by_id(vb['vendor_id'])
-        if vendor:
-            vendors_dict[vb['vendor_id']] = vendor
     
     # Create Professional PDF
     buffer = io.BytesIO()
@@ -471,20 +630,34 @@ def download_pdf(bid_id):
         return y_pos - 0.3*inch
     
     def draw_field(canvas_obj, y_pos, label, value, bold_label=True):
-        """Draw a label-value pair"""
-        if bold_label:
-            canvas_obj.setFont("Helvetica-Bold", 10)
-        else:
-            canvas_obj.setFont("Helvetica", 10)
-        canvas_obj.drawString(1*inch, y_pos, f"{label}:")
-        canvas_obj.setFont("Helvetica", 10)
-        # Handle long values
-        value_str = str(value) if value is not None else "N/A"
-        if len(value_str) > 80:
-            canvas_obj.drawString(3*inch, y_pos, value_str[:80])
-            return draw_field(canvas_obj, y_pos - 0.2*inch, "", value_str[80:], False) - 0.05*inch
-        canvas_obj.drawString(3*inch, y_pos, value_str)
-        return y_pos - 0.25*inch
+        """Draw a label-value pair with automatic wrapping"""
+        label_font = "Helvetica-Bold" if bold_label else "Helvetica"
+        value_font = "Helvetica"
+        font_size = 10
+
+        label_text = f"{label}:" if label else ""
+        canvas_obj.setFont(label_font, font_size)
+        if label_text:
+            canvas_obj.drawString(1 * inch, y_pos, label_text)
+
+        value_str = str(value) if value not in (None, "") else "N/A"
+        label_width = canvas_obj.stringWidth(label_text, label_font, font_size) if label_text else 0
+        value_x = 1 * inch + label_width + (0.12 * inch if label_text else 0)
+        max_width_points = width - value_x - 0.75 * inch
+        max_width_points = max(max_width_points, 2 * inch)
+
+        approx_char_width = canvas_obj.stringWidth("X", value_font, font_size) or 5
+        max_chars_per_line = max(int(max_width_points / approx_char_width), 10)
+
+        wrapped_lines = textwrap.wrap(value_str, max_chars_per_line) or [value_str]
+        canvas_obj.setFont(value_font, font_size)
+
+        current_y = y_pos
+        for idx, line in enumerate(wrapped_lines):
+            if idx > 0:
+                current_y -= 0.18 * inch
+            canvas_obj.drawString(value_x, current_y, line)
+        return current_y - 0.25 * inch
     
     # PAGE 1
     y = draw_header(c, height)
@@ -542,8 +715,16 @@ def download_pdf(bid_id):
             vendor_info = vendors_dict.get(vb['vendor_id'], {})
             tech_cap = vendor_info.get('technical_capability', 'N/A')
             
+            is_selected_vendor = False
+            if selected_submission_id:
+                is_selected_vendor = str(vb['submission_id']).strip() == selected_submission_id
+            elif selected_vendor_id:
+                is_selected_vendor = str(vb['vendor_id']).strip() == selected_vendor_id and vb.get('is_selected', False)
+            else:
+                is_selected_vendor = vb.get('is_selected', False)
+
             # Vendor header with selection indicator
-            if vb['is_selected']:
+            if is_selected_vendor:
                 c.setFillColorRGB(0.9, 1, 0.9)
                 c.rect(0.85*inch, y - 0.05*inch, width - 1.7*inch, 0.3*inch, fill=1)
                 c.setFillColorRGB(0, 0, 0)
@@ -567,7 +748,8 @@ def download_pdf(bid_id):
             c.setFont("Helvetica", 8)
             
             # Word wrap the proposal summary
-            proposal = str(vb['bid_description']) if vb['bid_description'] else "No proposal summary provided"
+            raw_proposal = sanitize_excel_value(vb.get('bid_description'), '')
+            proposal = str(raw_proposal) if raw_proposal else "No proposal summary provided"
             max_width = 80
             words = proposal.split()
             line = ""
@@ -598,13 +780,36 @@ def download_pdf(bid_id):
         c.drawString(1*inch, y, "No vendor submissions received.")
         y -= 0.3*inch
     
+    # Selected Vendor Summary
+    if not vendor_bids.empty and not selected_vendor.empty:
+        if y < 2.5*inch:
+            c.showPage()
+            y = draw_header(c, height) - 0.3*inch
+
+        y = draw_section(c, y, "4. SELECTED VENDOR SUMMARY")
+        selected_row = selected_vendor.iloc[0]
+        vendor_info = vendors_dict.get(selected_row['vendor_id'], {})
+        raw_summary = sanitize_excel_value(selected_row.get('bid_description'), '')
+        proposal_summary = raw_summary if raw_summary else "No proposal summary provided"
+
+        y = draw_field(c, y, "Submission ID", selected_row['submission_id'])
+        y = draw_field(c, y, "Vendor ID", selected_row['vendor_id'])
+        y = draw_field(c, y, "Vendor Name", selected_row['vendor_name'])
+        y = draw_field(c, y, "Technical Rating", f"{vendor_info.get('technical_capability', 'N/A')}/5")
+        y = draw_field(c, y, "Bid Amount", f"${selected_row['bid_amount']:,.2f}")
+        y = draw_field(c, y, "Proposal Summary", proposal_summary)
+        y = draw_field(c, y, "Submission Date", selected_row['submission_date'])
+        y = draw_field(c, y, "Contact Email", vendor_info.get('contact_email', 'N/A'))
+        y = draw_field(c, y, "Contact Phone", vendor_info.get('contact_phone', 'N/A'))
+        y -= 0.1*inch
+
     # Check if we need a new page
     if y < 2*inch:
         c.showPage()
         y = draw_header(c, height) - 0.3*inch
     
     # Admin Justification
-    y = draw_section(c, y, "4. ADMIN SELECTION JUSTIFICATION")
+    y = draw_section(c, y, "5. ADMIN SELECTION JUSTIFICATION")
     y = draw_field(c, y, "Justification", bid['admin_justification'])
     y = draw_field(c, y, "Submitted for Approval", bid['submission_date'])
     y -= 0.2*inch
@@ -615,7 +820,7 @@ def download_pdf(bid_id):
         y = draw_header(c, height) - 0.3*inch
     
     # Approval Workflow
-    y = draw_section(c, y, "5. APPROVAL WORKFLOW")
+    y = draw_section(c, y, "6. APPROVAL WORKFLOW")
     
     # A1 Approval
     c.setFont("Helvetica-Bold", 11)
@@ -648,7 +853,7 @@ def download_pdf(bid_id):
         y = draw_header(c, height) - 0.3*inch
     
     # Complete History
-    y = draw_section(c, y, "6. COMPLETE AUDIT TRAIL")
+    y = draw_section(c, y, "7. COMPLETE AUDIT TRAIL")
     c.setFont("Helvetica", 8)
     for idx, record in history.iterrows():
         if y < 1.5*inch:

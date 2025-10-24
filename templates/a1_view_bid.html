@@ -54,6 +54,9 @@
                         <dt class="col-sm-4">Vendor Name:</dt>
                         <dd class="col-sm-8">{{ v_bid.vendor_name }}</dd>
 
+                        <dt class="col-sm-4">Submission ID:</dt>
+                        <dd class="col-sm-8">{{ v_bid.submission_id }}</dd>
+
                         <dt class="col-sm-4">Bid Amount:</dt>
                         <dd class="col-sm-8"><strong>${{ "{:,.2f}".format(v_bid.bid_amount) }}</strong></dd>
 
@@ -89,6 +92,7 @@
                                 <tr>
                                     <th>Vendor ID</th>
                                     <th>Vendor Name</th>
+                                    <th>Submission ID</th>
                                     <th>Rating</th>
                                     <th>Bid Amount</th>
                                     <th>Proposal Summary</th>
@@ -101,6 +105,7 @@
                                 <tr class="{{ 'table-success' if vendor_bid_item.is_selected else '' }}">
                                     <td>{{ vendor_bid_item.vendor_id }}</td>
                                     <td>{{ vendor_bid_item.vendor_name }}</td>
+                                    <td>{{ vendor_bid_item.submission_id }}</td>
                                     <td>
                                         <span class="badge bg-info">{{ vendor_bid_item.technical_capability }}/5</span>
                                     </td>
