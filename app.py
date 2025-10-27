@@ -16,7 +16,7 @@ app = Flask(__name__)
 app.secret_key = 'your-secret-key-change-this-in-production'
 
 # Role management
-ROLES = ['Admin', 'Vendor', 'A1 Approver', 'A2 Approver']
+ROLES = ['Vendor', 'Buyer', 'A1 Approver', 'A2 Approver']
 
 
 def _is_missing_excel_value(value):
@@ -45,10 +45,10 @@ def normalize_bid_record(bid_record):
 
     normalized = bid_record.copy()
     for key in [
-        'selected_vendor_id',
+        'selected_buyer_id',
         'selected_submission_id',
-        'admin_justification',
-        'vendor_comment',
+        'vendor_justification',
+        'buyer_comment',
         'submission_date',
         'a1_comment',
         'a1_date',
@@ -68,84 +68,84 @@ def _normalize_bool_flag(value):
     return str(value).strip().lower() in {'true', '1', 'yes', 'selected'}
 
 
-def prepare_vendor_bids(bid_id):
-    """Fetch vendor submissions with consistent typing and metadata"""
-    vendor_bids = db.get_vendor_bids_for_bid(bid_id)
-    if vendor_bids.empty:
-        return vendor_bids, {}
+def prepare_buyer_bids(bid_id):
+    """Fetch buyer submissions with consistent typing and metadata"""
+    buyer_bids = db.get_buyer_bids_for_bid(bid_id)
+    if buyer_bids.empty:
+        return buyer_bids, {}
 
-    vendor_bids = vendor_bids.copy()
-    if 'submission_id' not in vendor_bids.columns:
-        vendor_bids['submission_id'] = ''
-    vendor_bids['submission_id'] = vendor_bids['submission_id'].fillna('').astype(str).str.strip()
+    buyer_bids = buyer_bids.copy()
+    if 'submission_id' not in buyer_bids.columns:
+        buyer_bids['submission_id'] = ''
+    buyer_bids['submission_id'] = buyer_bids['submission_id'].fillna('').astype(str).str.strip()
 
-    if 'vendor_id' not in vendor_bids.columns:
-        vendor_bids['vendor_id'] = ''
-    vendor_bids['vendor_id'] = vendor_bids['vendor_id'].fillna('').astype(str).str.strip()
+    if 'buyer_id' not in buyer_bids.columns:
+        buyer_bids['buyer_id'] = ''
+    buyer_bids['buyer_id'] = buyer_bids['buyer_id'].fillna('').astype(str).str.strip()
 
-    if 'is_selected' not in vendor_bids.columns:
-        vendor_bids['is_selected'] = False
-    vendor_bids['is_selected'] = vendor_bids['is_selected'].apply(_normalize_bool_flag)
+    if 'is_selected' not in buyer_bids.columns:
+        buyer_bids['is_selected'] = False
+    buyer_bids['is_selected'] = buyer_bids['is_selected'].apply(_normalize_bool_flag)
 
-    vendor_lookup = {}
-    for vid in vendor_bids['vendor_id'].unique():
-        vendor = db.get_vendor_by_id(vid)
-        if vendor:
-            vendor_lookup[vid] = vendor
+    buyer_lookup = {}
+    for vid in buyer_bids['buyer_id'].unique():
+        buyer = db.get_buyer_by_id(vid)
+        if buyer:
+            buyer_lookup[vid] = buyer
 
-    return vendor_bids, vendor_lookup
+    return buyer_bids, buyer_lookup
 
 
-def get_selected_submission(bid_record, vendor_bids):
+def get_selected_submission(bid_record, buyer_bids):
     """Locate the DataFrame row for the winning submission"""
-    if vendor_bids.empty:
-        return vendor_bids
+    if buyer_bids.empty:
+        return buyer_bids
 
     selected_submission_id = str(sanitize_excel_value(bid_record.get('selected_submission_id'), '')).strip()
-    selected_vendor_id = str(sanitize_excel_value(bid_record.get('selected_vendor_id'), '')).strip()
+    selected_buyer_id = str(sanitize_excel_value(bid_record.get('selected_buyer_id'), '')).strip()
 
     if selected_submission_id:
-        selected_rows = vendor_bids[vendor_bids['submission_id'] == selected_submission_id]
+        selected_rows = buyer_bids[buyer_bids['submission_id'] == selected_submission_id]
         if not selected_rows.empty:
             return selected_rows
 
-    selected_rows = vendor_bids[vendor_bids['is_selected'] == True]
+    selected_rows = buyer_bids[buyer_bids['is_selected'] == True]
     if not selected_rows.empty:
-        if selected_vendor_id:
-            vendor_match = selected_rows[selected_rows['vendor_id'] == selected_vendor_id]
-            if not vendor_match.empty:
-                return vendor_match
+        if selected_buyer_id:
+            buyer_match = selected_rows[selected_rows['buyer_id'] == selected_buyer_id]
+            if not buyer_match.empty:
+                return buyer_match
         return selected_rows
 
-    if selected_vendor_id:
-        fallback = vendor_bids[vendor_bids['vendor_id'] == selected_vendor_id]
+    if selected_buyer_id:
+        fallback = buyer_bids[buyer_bids['buyer_id'] == selected_buyer_id]
         if not fallback.empty:
             return fallback
 
-    return vendor_bids.iloc[0:0]
+    return buyer_bids.iloc[0:0]
 
 @app.route('/')
 def index():
     """Home page - redirect to dashboard based on role"""
     if 'role' not in session:
-        session['role'] = 'Admin'
+        session['role'] = 'Vendor'
         session['user_name'] = 'Admin User'
     
-    role = session.get('role', 'Admin')
+    role = session.get('role', 'Vendor')
     
-    if role == 'Admin':
-        return redirect(url_for('admin_dashboard'))
-    elif role == 'Vendor':
-        # Check if vendor is logged in
-        if 'vendor_id' not in session:
-            return redirect(url_for('vendor_login_page'))
+    if role == 'Vendor':
         return redirect(url_for('vendor_dashboard'))
+    elif role == 'Buyer':
+        # Check if buyer is logged in
+        if 'buyer_id' not in session:
+            return redirect(url_for('buyer_login_page'))
+        return redirect(url_for('buyer_dashboard'))
     elif role == 'A1 Approver':
         return redirect(url_for('a1_dashboard'))
     elif role == 'A2 Approver':
         return redirect(url_for('a2_dashboard'))
     
-    return redirect(url_for('admin_dashboard'))
+    return redirect(url_for('vendor_dashboard'))
 
 @app.route('/switch_role/<role>')
 def switch_role(role):
@@ -154,14 +154,14 @@ def switch_role(role):
         session['role'] = role
         
         # Set appropriate user name based on role
-        if role == 'Admin':
+        if role == 'Vendor':
             session['user_name'] = 'Admin User'
-        elif role == 'Vendor':
-            # Clear vendor session when switching to vendor role
-            if 'vendor_id' in session:
-                del session['vendor_id']
-                del session['vendor_name']
-            session['user_name'] = 'Vendor User'
+        elif role == 'Buyer':
+            # Clear buyer session when switching to buyer role
+            if 'buyer_id' in session:
+                del session['buyer_id']
+                del session['buyer_name']
+            session['user_name'] = 'Buyer User'
         elif role == 'A1 Approver':
             session['user_name'] = 'A1 Approver'
         elif role == 'A2 Approver':
@@ -171,116 +171,116 @@ def switch_role(role):
     
     return redirect(url_for('index'))
 
-# Vendor Login/Registration Routes
-@app.route('/vendor/login', methods=['GET', 'POST'])
-def vendor_login_page():
-    """Vendor login page"""
-    vendors_df = db.get_all_vendors()
-    vendors = vendors_df.to_dict('records') if not vendors_df.empty else []
+# Buyer Login/Registration Routes
+@app.route('/buyer/login', methods=['GET', 'POST'])
+def buyer_login_page():
+    """Buyer login page"""
+    buyers_df = db.get_all_buyers()
+    buyers = buyers_df.to_dict('records') if not buyers_df.empty else []
     
     if request.method == 'POST':
-        vendor_id = request.form['vendor_id']
+        buyer_id = request.form['buyer_id']
         
-        vendor = db.get_vendor_by_id(vendor_id)
-        if vendor:
-            session['vendor_id'] = vendor['vendor_id']
-            session['vendor_name'] = vendor['vendor_name']
-            session['user_name'] = vendor['vendor_name']
-            flash(f'Welcome, {vendor["vendor_name"]}!', 'success')
-            return redirect(url_for('vendor_dashboard'))
+        buyer = db.get_buyer_by_id(buyer_id)
+        if buyer:
+            session['buyer_id'] = buyer['buyer_id']
+            session['buyer_name'] = buyer['buyer_name']
+            session['user_name'] = buyer['buyer_name']
+            flash(f'Welcome, {buyer["buyer_name"]}!', 'success')
+            return redirect(url_for('buyer_dashboard'))
         else:
-            flash('Invalid vendor selection!', 'danger')
+            flash('Invalid buyer selection!', 'danger')
     
-    return render_template('vendor_login.html', role=session.get('role'), vendors=vendors)
+    return render_template('buyer_login.html', role=session.get('role'), buyers=buyers)
 
-@app.route('/vendor/register', methods=['GET', 'POST'])
-def vendor_register():
-    """Vendor registration page"""
+@app.route('/buyer/register', methods=['GET', 'POST'])
+def buyer_register():
+    """Buyer registration page"""
     if request.method == 'POST':
-        vendor_name = request.form['vendor_name']
+        buyer_name = request.form['buyer_name']
         contact_email = request.form['contact_email']
         contact_phone = request.form['contact_phone']
         password = request.form['password']
         
-        vendor_id = db.create_vendor(vendor_name, contact_email, contact_phone, password)
+        buyer_id = db.create_buyer(buyer_name, contact_email, contact_phone, password)
         
         # Auto login after registration
-        session['vendor_id'] = vendor_id
-        session['vendor_name'] = vendor_name
-        session['user_name'] = vendor_name
+        session['buyer_id'] = buyer_id
+        session['buyer_name'] = buyer_name
+        session['user_name'] = buyer_name
         
-        flash(f'Registration successful! Your Vendor ID is: {vendor_id}', 'success')
-        return redirect(url_for('vendor_dashboard'))
+        flash(f'Registration successful! Your Buyer ID is: {buyer_id}', 'success')
+        return redirect(url_for('buyer_dashboard'))
     
-    return render_template('vendor_register.html', role=session.get('role'))
+    return render_template('buyer_register.html', role=session.get('role'))
 
-@app.route('/vendor/logout')
-def vendor_logout():
-    """Vendor logout"""
-    if 'vendor_id' in session:
-        del session['vendor_id']
-        del session['vendor_name']
+@app.route('/buyer/logout')
+def buyer_logout():
+    """Buyer logout"""
+    if 'buyer_id' in session:
+        del session['buyer_id']
+        del session['buyer_name']
     flash('Logged out successfully!', 'success')
-    return redirect(url_for('vendor_login_page'))
+    return redirect(url_for('buyer_login_page'))
 
-@app.route('/admin/dashboard')
-def admin_dashboard():
+@app.route('/vendor/dashboard')
+def vendor_dashboard():
     """Admin Dashboard"""
-    if session.get('role') != 'Admin':
+    if session.get('role') != 'Vendor':
         flash('Access denied. Admin role required.', 'danger')
         return redirect(url_for('index'))
     
     bids = db.get_all_bids()
     
-    # Enrich bids with vendor information
+    # Enrich bids with buyer information
     if not bids.empty:
-        vendor_names = []
-        vendor_contacts = []
+        buyer_names = []
+        buyer_contacts = []
         for index, bid in bids.iterrows():
-            vendor_id = str(bid.get('selected_vendor_id', '')).strip()
-            if vendor_id:
-                vendor = db.get_vendor_by_id(vendor_id)
-                if vendor:
-                    vendor_names.append(vendor.get('vendor_name', ''))
-                    vendor_contacts.append(vendor.get('contact_email', ''))
+            buyer_id = str(bid.get('selected_buyer_id', '')).strip()
+            if buyer_id:
+                buyer = db.get_buyer_by_id(buyer_id)
+                if buyer:
+                    buyer_names.append(buyer.get('buyer_name', ''))
+                    buyer_contacts.append(buyer.get('contact_email', ''))
                 else:
-                    vendor_names.append('')
-                    vendor_contacts.append('')
+                    buyer_names.append('')
+                    buyer_contacts.append('')
             else:
-                vendor_names.append('')
-                vendor_contacts.append('')
+                buyer_names.append('')
+                buyer_contacts.append('')
         
-        bids['vendor_name'] = vendor_names
-        bids['vendor_contact'] = vendor_contacts
+        bids['buyer_name'] = buyer_names
+        bids['buyer_contact'] = buyer_contacts
     
-    return render_template('admin_dashboard.html', bids=bids, role=session.get('role'))
+    return render_template('vendor_dashboard.html', bids=bids, role=session.get('role'))
 
-@app.route('/admin/create_bid', methods=['GET', 'POST'])
+@app.route('/vendor/create_bid', methods=['GET', 'POST'])
 def create_bid():
     """Create new bid"""
-    if session.get('role') != 'Admin':
+    if session.get('role') != 'Vendor':
         flash('Access denied. Admin role required.', 'danger')
         return redirect(url_for('index'))
 
-    vendors_df = db.get_all_vendors()
-    vendors = vendors_df.to_dict('records') if not vendors_df.empty else []
+    buyers_df = db.get_all_buyers()
+    buyers = buyers_df.to_dict('records') if not buyers_df.empty else []
     
     if request.method == 'POST':
         contract_name = request.form['contract_name']
         contract_description = request.form['contract_description']
         contract_value = float(request.form['contract_value'])
-        assigned_vendor_id = request.form.get('assigned_vendor_id', '').strip()
-        admin_name = session.get('user_name', 'Admin')
+        assigned_buyer_id = request.form.get('assigned_buyer_id', '').strip()
+        vendor_name = session.get('user_name', 'Vendor')
         
-        if not assigned_vendor_id:
-            flash('Please assign a vendor for this bid.', 'danger')
-            return render_template('create_bid.html', role=session.get('role'), vendors=vendors)
+        if not assigned_buyer_id:
+            flash('Please assign a buyer for this bid.', 'danger')
+            return render_template('create_bid.html', role=session.get('role'), buyers=buyers)
 
-        if not any(v['vendor_id'] == assigned_vendor_id for v in vendors):
-            flash('Selected vendor could not be found. Please choose a valid vendor.', 'danger')
-            return render_template('create_bid.html', role=session.get('role'), vendors=vendors)
+        if not any(v['buyer_id'] == assigned_buyer_id for v in buyers):
+            flash('Selected buyer could not be found. Please choose a valid buyer.', 'danger')
+            return render_template('create_bid.html', role=session.get('role'), buyers=buyers)
 
-        bid_id = db.create_bid(contract_name, contract_description, contract_value, admin_name, assigned_vendor_id)
+        bid_id = db.create_bid(contract_name, contract_description, contract_value, vendor_name, assigned_buyer_id)
         
         # Add bid items if provided
         item_names = request.form.getlist('item_name[]')
@@ -293,109 +293,109 @@ def create_bid():
                 db.add_bid_item(bid_id, item_names[i], item_descriptions[i], 
                               float(quantities[i]) if quantities[i] else 0, units[i])
 
-        selected_vendor = next((v for v in vendors if v.get('vendor_id') == assigned_vendor_id), None)
-        vendor_label = selected_vendor['vendor_name'] if selected_vendor else assigned_vendor_id
+        selected_buyer = next((v for v in buyers if v.get('buyer_id') == assigned_buyer_id), None)
+        buyer_label = selected_buyer['buyer_name'] if selected_buyer else assigned_buyer_id
 
-        flash(f'Bid {bid_id} created and assigned to {vendor_label}!', 'success')
-        return redirect(url_for('admin_dashboard'))
+        flash(f'Bid {bid_id} created and assigned to {buyer_label}!', 'success')
+        return redirect(url_for('vendor_dashboard'))
 
-    return render_template('create_bid.html', role=session.get('role'), vendors=vendors)
+    return render_template('create_bid.html', role=session.get('role'), buyers=buyers)
 
-@app.route('/admin/view_bid/<bid_id>')
-def admin_view_bid(bid_id):
-    """View bid details and vendor submissions"""
-    if session.get('role') != 'Admin':
+@app.route('/vendor/view_bid/<bid_id>')
+def vendor_view_bid(bid_id):
+    """View bid details and buyer submissions"""
+    if session.get('role') != 'Vendor':
         flash('Access denied. Admin role required.', 'danger')
         return redirect(url_for('index'))
     
     raw_bid = db.get_bid_by_id(bid_id)
     if not raw_bid:
         flash('Bid not found.', 'danger')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('vendor_dashboard'))
 
     bid = normalize_bid_record(raw_bid)
     history = db.get_history_for_bid(bid_id)
     items = db.get_items_for_bid(bid_id)
 
-    assigned_vendor = None
-    assigned_vendor_id = str(bid.get('selected_vendor_id', '')).strip()
-    if assigned_vendor_id:
-        assigned_vendor = db.get_vendor_by_id(assigned_vendor_id)
+    assigned_buyer = None
+    assigned_buyer_id = str(bid.get('selected_buyer_id', '')).strip()
+    if assigned_buyer_id:
+        assigned_buyer = db.get_buyer_by_id(assigned_buyer_id)
 
     return render_template(
-        'admin_view_bid.html',
+        'vendor_view_bid.html',
         bid=bid,
-        assigned_vendor=assigned_vendor,
+        assigned_buyer=assigned_buyer,
         history=history,
         items=items,
         role=session.get('role')
     )
 
-@app.route('/admin/select_vendor/<bid_id>', methods=['POST'])
-def select_vendor(bid_id):
-    """Select vendor and submit for A1 approval"""
-    if session.get('role') != 'Admin':
+@app.route('/admin/select_buyer/<bid_id>', methods=['POST'])
+def select_buyer(bid_id):
+    """Select buyer and submit for A1 approval"""
+    if session.get('role') != 'Vendor':
         flash('Access denied. Admin role required.', 'danger')
         return redirect(url_for('index'))
     
     submission_id = request.form['submission_id']
     justification = request.form['justification']
-    admin_name = session.get('user_name', 'Admin')
+    vendor_name = session.get('user_name', 'Vendor')
 
-    success, detail = db.select_vendor_and_submit_for_approval(bid_id, submission_id, justification, admin_name)
+    success, detail = db.select_buyer_and_submit_for_approval(bid_id, submission_id, justification, vendor_name)
     if not success:
         flash(detail, 'danger')
-        return redirect(url_for('admin_view_bid', bid_id=bid_id))
+        return redirect(url_for('vendor_view_bid', bid_id=bid_id))
 
-    vendor = db.get_vendor_by_id(detail)
-    vendor_label = vendor['vendor_name'] if vendor else detail
-    flash(f'Submission {submission_id} from {vendor_label} submitted for A1 approval!', 'success')
+    buyer = db.get_buyer_by_id(detail)
+    buyer_label = buyer['buyer_name'] if buyer else detail
+    flash(f'Submission {submission_id} from {buyer_label} submitted for A1 approval!', 'success')
     
-    return redirect(url_for('admin_view_bid', bid_id=bid_id))
+    return redirect(url_for('vendor_view_bid', bid_id=bid_id))
 
-@app.route('/vendor/dashboard')
-def vendor_dashboard():
-    """Vendor Dashboard"""
-    if session.get('role') != 'Vendor':
-        flash('Access denied. Vendor role required.', 'danger')
+@app.route('/buyer/dashboard')
+def buyer_dashboard():
+    """Buyer Dashboard"""
+    if session.get('role') != 'Buyer':
+        flash('Access denied. Buyer role required.', 'danger')
         return redirect(url_for('index'))
     
-    if 'vendor_id' not in session:
+    if 'buyer_id' not in session:
         flash('Please login first!', 'warning')
-        return redirect(url_for('vendor_login_page'))
+        return redirect(url_for('buyer_login_page'))
     
     bids = db.get_all_bids()
-    vendor_id = session.get('vendor_id', '')
+    buyer_id = session.get('buyer_id', '')
 
     if bids.empty:
         assigned_bids = bids
     else:
         bids = bids.copy()
-        if 'selected_vendor_id' not in bids.columns:
-            bids['selected_vendor_id'] = ''
-        if 'vendor_comment' not in bids.columns:
-            bids['vendor_comment'] = ''
+        if 'selected_buyer_id' not in bids.columns:
+            bids['selected_buyer_id'] = ''
+        if 'buyer_comment' not in bids.columns:
+            bids['buyer_comment'] = ''
         if 'submission_date' not in bids.columns:
             bids['submission_date'] = ''
         if 'status' not in bids.columns:
             bids['status'] = ''
-        assigned_bids = bids[bids['selected_vendor_id'].astype(str).str.strip() == str(vendor_id).strip()]
+        assigned_bids = bids[bids['selected_buyer_id'].astype(str).str.strip() == str(buyer_id).strip()]
 
     if bids.empty:
         assigned_bids = bids
 
-    return render_template('vendor_dashboard.html', bids=assigned_bids, role=session.get('role'))
+    return render_template('buyer_dashboard.html', bids=assigned_bids, role=session.get('role'))
 
-@app.route('/vendor/view_bid/<bid_id>')
-def vendor_view_bid(bid_id):
-    """View bid details for vendor"""
-    if session.get('role') != 'Vendor':
-        flash('Access denied. Vendor role required.', 'danger')
+@app.route('/buyer/view_bid/<bid_id>')
+def buyer_view_bid(bid_id):
+    """View bid details for buyer"""
+    if session.get('role') != 'Buyer':
+        flash('Access denied. Buyer role required.', 'danger')
         return redirect(url_for('index'))
     
-    if 'vendor_id' not in session:
+    if 'buyer_id' not in session:
         flash('Please login first!', 'warning')
-        return redirect(url_for('vendor_login_page'))
+        return redirect(url_for('buyer_login_page'))
     
     raw_bid = db.get_bid_by_id(bid_id)
     if not raw_bid:
@@ -404,41 +404,41 @@ def vendor_view_bid(bid_id):
 
     bid = normalize_bid_record(raw_bid)
     items = db.get_items_for_bid(bid_id)
-    vendor = db.get_vendor_by_id(session.get('vendor_id'))
+    buyer = db.get_buyer_by_id(session.get('buyer_id'))
     history = db.get_history_for_bid(bid_id)
 
-    assigned_vendor_id = str(bid.get('selected_vendor_id', '')).strip()
-    if assigned_vendor_id != str(session.get('vendor_id', '')).strip():
+    assigned_buyer_id = str(bid.get('selected_buyer_id', '')).strip()
+    if assigned_buyer_id != str(session.get('buyer_id', '')).strip():
         flash('You are not assigned to this bid.', 'danger')
-        return redirect(url_for('vendor_dashboard'))
+        return redirect(url_for('buyer_dashboard'))
 
-    can_submit = bid.get('status') in {'Awaiting Vendor', 'Draft', 'Under Review'}
+    can_submit = bid.get('status') in {'Awaiting Buyer', 'Draft', 'Under Review'}
     
-    return render_template('vendor_view_bid.html', bid=bid, items=items, 
-                          vendor=vendor, history=history, role=session.get('role'), can_submit=can_submit)
+    return render_template('buyer_view_bid.html', bid=bid, items=items, 
+                          buyer=buyer, history=history, role=session.get('role'), can_submit=can_submit)
 
-@app.route('/vendor/submit_bid/<bid_id>', methods=['POST'])
+@app.route('/buyer/submit_bid/<bid_id>', methods=['POST'])
 def submit_bid(bid_id):
-    """Submit vendor bid"""
-    if session.get('role') != 'Vendor':
-        flash('Access denied. Vendor role required.', 'danger')
+    """Submit buyer bid"""
+    if session.get('role') != 'Buyer':
+        flash('Access denied. Buyer role required.', 'danger')
         return redirect(url_for('index'))
     
-    vendor_id = session.get('vendor_id')
-    vendor_comment = request.form.get('vendor_comment', '').strip()
+    buyer_id = session.get('buyer_id')
+    buyer_comment = request.form.get('buyer_comment', '').strip()
 
-    if not vendor_comment:
+    if not buyer_comment:
         flash('Please provide a comment before submitting.', 'danger')
-        return redirect(url_for('vendor_view_bid', bid_id=bid_id))
+        return redirect(url_for('buyer_view_bid', bid_id=bid_id))
 
-    success, error = db.vendor_submit_comment(bid_id, vendor_id, vendor_comment)
+    success, error = db.buyer_submit_comment(bid_id, buyer_id, buyer_comment)
     if not success:
         flash(error, 'danger')
-        return redirect(url_for('vendor_view_bid', bid_id=bid_id))
+        return redirect(url_for('buyer_view_bid', bid_id=bid_id))
 
     flash('Response submitted successfully! Bid sent to A1 approval.', 'success')
     
-    return redirect(url_for('vendor_dashboard'))
+    return redirect(url_for('buyer_dashboard'))
 
 @app.route('/a1/dashboard')
 def a1_dashboard():
@@ -472,12 +472,12 @@ def a1_view_bid(bid_id):
     
     history = db.get_history_for_bid(bid_id)
     items = db.get_items_for_bid(bid_id)
-    assigned_vendor = None
-    assigned_vendor_id = str(bid.get('selected_vendor_id', '')).strip()
-    if assigned_vendor_id:
-        assigned_vendor = db.get_vendor_by_id(assigned_vendor_id)
+    assigned_buyer = None
+    assigned_buyer_id = str(bid.get('selected_buyer_id', '')).strip()
+    if assigned_buyer_id:
+        assigned_buyer = db.get_buyer_by_id(assigned_buyer_id)
     
-    return render_template('a1_view_bid.html', bid=bid, assigned_vendor=assigned_vendor,
+    return render_template('a1_view_bid.html', bid=bid, assigned_buyer=assigned_buyer,
                           history=history, items=items, role=session.get('role'))
 
 @app.route('/a1/approve/<bid_id>', methods=['POST'])
@@ -555,12 +555,12 @@ def a2_view_bid(bid_id):
     
     history = db.get_history_for_bid(bid_id)
     items = db.get_items_for_bid(bid_id)
-    assigned_vendor = None
-    assigned_vendor_id = str(bid.get('selected_vendor_id', '')).strip()
-    if assigned_vendor_id:
-        assigned_vendor = db.get_vendor_by_id(assigned_vendor_id)
+    assigned_buyer = None
+    assigned_buyer_id = str(bid.get('selected_buyer_id', '')).strip()
+    if assigned_buyer_id:
+        assigned_buyer = db.get_buyer_by_id(assigned_buyer_id)
     
-    return render_template('a2_view_bid.html', bid=bid, assigned_vendor=assigned_vendor,
+    return render_template('a2_view_bid.html', bid=bid, assigned_buyer=assigned_buyer,
                           history=history, items=items, role=session.get('role'))
 
 @app.route('/a2/approve/<bid_id>', methods=['POST'])
@@ -648,10 +648,10 @@ def download_pdf(bid_id):
         return redirect(url_for('index'))
     
     bid = normalize_bid_record(bid)
-    vendor_bids, vendors_dict = prepare_vendor_bids(bid_id)
-    selected_vendor = get_selected_submission(bid, vendor_bids)
+    buyer_bids, buyers_dict = prepare_buyer_bids(bid_id)
+    selected_buyer = get_selected_submission(bid, buyer_bids)
     selected_submission_id = str(sanitize_excel_value(bid.get('selected_submission_id'), '')).strip()
-    selected_vendor_id = str(sanitize_excel_value(bid.get('selected_vendor_id'), '')).strip()
+    selected_buyer_id = str(sanitize_excel_value(bid.get('selected_buyer_id'), '')).strip()
     history = db.get_history_for_bid(bid_id)
     items = db.get_items_for_bid(bid_id)
     
@@ -723,14 +723,14 @@ def download_pdf(bid_id):
     y = draw_field(c, y, "Contract Name", bid['contract_name'])
     y = draw_field(c, y, "Description", bid['contract_description'])
     y = draw_field(c, y, "Contract Value", f"${bid['contract_value']:,.2f}")
-    y = draw_field(c, y, "Created By", bid['admin_name'])
+    y = draw_field(c, y, "Created By", bid['vendor_name'])
     y = draw_field(c, y, "Created Date", bid['created_date'])
-    assigned_vendor = db.get_vendor_by_id(selected_vendor_id) if selected_vendor_id else None
-    if assigned_vendor:
-        assigned_vendor_label = f"{assigned_vendor.get('vendor_name', 'N/A')} ({selected_vendor_id})"
+    assigned_buyer = db.get_buyer_by_id(selected_buyer_id) if selected_buyer_id else None
+    if assigned_buyer:
+        assigned_buyer_label = f"{assigned_buyer.get('buyer_name', 'N/A')} ({selected_buyer_id})"
     else:
-        assigned_vendor_label = "Not Assigned"
-    y = draw_field(c, y, "Assigned Vendor", assigned_vendor_label)
+        assigned_buyer_label = "Not Assigned"
+    y = draw_field(c, y, "Assigned Buyer", assigned_buyer_label)
     y -= 0.2*inch
     
     # Bid Items
@@ -759,120 +759,20 @@ def download_pdf(bid_id):
         c.showPage()
         y = draw_header(c, height) - 0.3*inch
     
-    # Bid Comparison Table
-    y = draw_section(c, y, "3. BID COMPARISON & PROPOSALS")
-    if not vendor_bids.empty:
-        c.setFont("Helvetica", 9)
-        c.drawString(1*inch, y, f"Total Submissions Received: {len(vendor_bids)}")
-        y -= 0.3*inch
-        
-        for idx, vb in vendor_bids.iterrows():
-            if y < 2.5*inch:
-                c.showPage()
-                y = draw_header(c, height) - 0.3*inch
-            
-            is_selected_vendor = False
-            if selected_submission_id:
-                is_selected_vendor = str(vb['submission_id']).strip() == selected_submission_id
-            elif selected_vendor_id:
-                is_selected_vendor = str(vb['vendor_id']).strip() == selected_vendor_id and vb.get('is_selected', False)
-            else:
-                is_selected_vendor = vb.get('is_selected', False)
+    # Assigned Buyer Response
+    if y < 2.5*inch:
+        c.showPage()
+        y = draw_header(c, height) - 0.3*inch
 
-            # Vendor header with selection indicator
-            if is_selected_vendor:
-                c.setFillColorRGB(0.9, 1, 0.9)
-                c.rect(0.85*inch, y - 0.05*inch, width - 1.7*inch, 0.3*inch, fill=1)
-                c.setFillColorRGB(0, 0, 0)
-                c.setFont("Helvetica-Bold", 10)
-                c.drawString(1*inch, y, f"★ {vb['vendor_name']} ({vb['vendor_id']}) - SELECTED")
-            else:
-                c.setFont("Helvetica-Bold", 10)
-                c.drawString(1*inch, y, f"{vb['vendor_name']} ({vb['vendor_id']})")
-            y -= 0.25*inch
-            
-            # Vendor details in two columns
-            c.setFont("Helvetica", 9)
-            c.drawString(1.2*inch, y, f"Bid Amount: ${vb['bid_amount']:,.2f}")
-            y -= 0.2*inch
-            
-            # Proposal Summary
-            c.setFont("Helvetica-Bold", 9)
-            c.drawString(1.2*inch, y, "Proposal Summary:")
-            y -= 0.15*inch
-            c.setFont("Helvetica", 8)
-            
-            # Word wrap the proposal summary
-            raw_proposal = sanitize_excel_value(vb.get('bid_description'), '')
-            proposal = str(raw_proposal) if raw_proposal else "No proposal summary provided"
-            max_width = 80
-            words = proposal.split()
-            line = ""
-            for word in words:
-                if len(line) + len(word) + 1 <= max_width:
-                    line += word + " "
-                else:
-                    c.drawString(1.3*inch, y, line.strip())
-                    y -= 0.12*inch
-                    line = word + " "
-                    if y < 1.5*inch:
-                        c.showPage()
-                        y = draw_header(c, height) - 0.3*inch
-            if line:
-                c.drawString(1.3*inch, y, line.strip())
-                y -= 0.12*inch
-            
-            # Spacing between vendors
-            y -= 0.15*inch
-            c.setStrokeColorRGB(0.8, 0.8, 0.8)
-            c.line(1*inch, y, width - 1*inch, y)
-            c.setStrokeColorRGB(0, 0, 0)
-            y -= 0.2*inch
-        
-        y -= 0.1*inch
-    else:
-        c.setFont("Helvetica", 10)
-        c.drawString(1*inch, y, "No vendor submissions received.")
-        y -= 0.3*inch
-    
-    # Selected Vendor Summary / Assigned Vendor Response
-    if not vendor_bids.empty and not selected_vendor.empty:
-        if y < 2.5*inch:
-            c.showPage()
-            y = draw_header(c, height) - 0.3*inch
-
-        y = draw_section(c, y, "4. SELECTED VENDOR SUMMARY")
-        selected_row = selected_vendor.iloc[0]
-        vendor_info = vendors_dict.get(selected_row['vendor_id'], {})
-        raw_summary = sanitize_excel_value(selected_row.get('bid_description'), '')
-        proposal_summary = raw_summary if raw_summary else "No proposal summary provided"
-        vendor_comment = bid.get('vendor_comment') or proposal_summary
-
-        y = draw_field(c, y, "Submission ID", selected_row['submission_id'])
-        y = draw_field(c, y, "Vendor ID", selected_row['vendor_id'])
-        y = draw_field(c, y, "Vendor Name", selected_row['vendor_name'])
-        bid_amount_value = selected_row['bid_amount'] if 'bid_amount' in selected_row else None
-        if bid_amount_value is not None and bid_amount_value == bid_amount_value:
-            y = draw_field(c, y, "Bid Amount", f"${bid_amount_value:,.2f}")
-        y = draw_field(c, y, "Proposal Summary", vendor_comment)
-        y = draw_field(c, y, "Submission Date", selected_row['submission_date'])
-        y = draw_field(c, y, "Contact Email", vendor_info.get('contact_email', 'N/A'))
-        y = draw_field(c, y, "Contact Phone", vendor_info.get('contact_phone', 'N/A'))
-        y -= 0.1*inch
-    else:
-        if y < 2.5*inch:
-            c.showPage()
-            y = draw_header(c, height) - 0.3*inch
-
-        y = draw_section(c, y, "4. ASSIGNED VENDOR RESPONSE")
-        vendor_name = assigned_vendor.get('vendor_name') if assigned_vendor else None
-        y = draw_field(c, y, "Vendor ID", selected_vendor_id or 'Not Assigned')
-        y = draw_field(c, y, "Vendor Name", vendor_name or 'Not Assigned')
-        y = draw_field(c, y, "Contact Email", (assigned_vendor or {}).get('contact_email', 'N/A'))
-        y = draw_field(c, y, "Contact Phone", (assigned_vendor or {}).get('contact_phone', 'N/A'))
-        y = draw_field(c, y, "Vendor Comment", bid.get('vendor_comment') or 'No comment submitted yet')
-        y = draw_field(c, y, "Submitted On", bid.get('submission_date') or 'Not submitted')
-        y -= 0.1*inch
+    y = draw_section(c, y, "3. ASSIGNED BUYER RESPONSE")
+    buyer_name = assigned_buyer.get('buyer_name') if assigned_buyer else None
+    y = draw_field(c, y, "Buyer ID", selected_buyer_id or 'Not Assigned')
+    y = draw_field(c, y, "Buyer Name", buyer_name or 'Not Assigned')
+    y = draw_field(c, y, "Contact Email", (assigned_buyer or {}).get('contact_email', 'N/A'))
+    y = draw_field(c, y, "Contact Phone", (assigned_buyer or {}).get('contact_phone', 'N/A'))
+    y = draw_field(c, y, "Buyer Comment", bid.get('buyer_comment') or 'No comment submitted yet')
+    y = draw_field(c, y, "Submitted On", bid.get('submission_date') or 'Not submitted')
+    y -= 0.1*inch
 
     # Check if we need a new page
     if y < 2*inch:
@@ -880,8 +780,8 @@ def download_pdf(bid_id):
         y = draw_header(c, height) - 0.3*inch
     
     # Admin Notes
-    y = draw_section(c, y, "5. ADMIN NOTES")
-    y = draw_field(c, y, "Notes", bid['admin_justification'])
+    y = draw_section(c, y, "4. ADMIN NOTES")
+    y = draw_field(c, y, "Notes", bid['vendor_justification'])
     y = draw_field(c, y, "Submitted for Approval", bid['submission_date'])
     y -= 0.2*inch
     
@@ -891,7 +791,7 @@ def download_pdf(bid_id):
         y = draw_header(c, height) - 0.3*inch
     
     # Approval Workflow
-    y = draw_section(c, y, "6. APPROVAL WORKFLOW")
+    y = draw_section(c, y, "5. APPROVAL WORKFLOW")
     
     # A1 Approval
     c.setFont("Helvetica-Bold", 11)
@@ -924,7 +824,7 @@ def download_pdf(bid_id):
         y = draw_header(c, height) - 0.3*inch
     
     # Complete History
-    y = draw_section(c, y, "7. COMPLETE AUDIT TRAIL")
+    y = draw_section(c, y, "6. COMPLETE AUDIT TRAIL")
     c.setFont("Helvetica", 8)
     for idx, record in history.iterrows():
         if y < 1.5*inch:

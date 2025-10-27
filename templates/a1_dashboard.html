@@ -25,7 +25,7 @@
                             <th>Bid ID</th>
                             <th>Contract Name</th>
                             <th>Contract Value</th>
-                            <th>Assigned Vendor</th>
+                            <th>Assigned Buyer</th>
                             <th>Status</th>
                             <th>Actions</th>
                         </tr>
@@ -37,19 +37,19 @@
                             <td>{{ bid.contract_name }}</td>
                             <td>${{ "{:,.2f}".format(bid.contract_value) }}</td>
                             <td>
-                                {% set vendor_candidate = bid.selected_vendor_id if bid.selected_vendor_id is defined else '' %}
-                                {% set vendor_id = (vendor_candidate|string).strip() %}
-                                {% if vendor_id and vendor_id|lower not in ['nan', 'nat'] %}
-                                    <div><strong>{{ vendor_id }}</strong></div>
-                                    {% if bid.vendor_comment %}
-                                    <div class="small text-muted">{{ bid.vendor_comment[:40] }}{% if bid.vendor_comment|length > 40 %}...{% endif %}</div>
+                                {% set buyer_candidate = bid.selected_buyer_id if bid.selected_buyer_id is defined else '' %}
+                                {% set buyer_id = (buyer_candidate|string).strip() %}
+                                {% if buyer_id and buyer_id|lower not in ['nan', 'nat'] %}
+                                    <div><strong>{{ buyer_id }}</strong></div>
+                                    {% if bid.buyer_comment %}
+                                    <div class="small text-muted">{{ bid.buyer_comment[:40] }}{% if bid.buyer_comment|length > 40 %}...{% endif %}</div>
                                     {% endif %}
                                 {% else %}
                                     -
                                 {% endif %}
                             </td>
                             <td>
-                                {% if bid.status == 'Awaiting Vendor' %}
+                                {% if bid.status == 'Awaiting Buyer' %}
                                     <span class="badge bg-info status-badge">{{ bid.status }}</span>
                                 {% elif bid.status == 'Pending A1' %}
                                     <span class="badge bg-warning status-badge">{{ bid.status }} ⚠️</span>

@@ -1,20 +1,20 @@
 {% extends "base.html" %}
 
-{% block title %}Vendor Registration{% endblock %}
+{% block title %}Buyer Registration{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-8">
         <div class="card">
             <div class="card-header bg-success text-white">
-                <h4 class="mb-0"><i class="bi bi-person-plus"></i> New Vendor Registration</h4>
+                <h4 class="mb-0"><i class="bi bi-person-plus"></i> New Buyer Registration</h4>
             </div>
             <div class="card-body">
-                <form method="POST" action="{{ url_for('vendor_register') }}">
+                <form method="POST" action="{{ url_for('buyer_register') }}">
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label for="vendor_name" class="form-label">Company Name *</label>
-                            <input type="text" class="form-control" id="vendor_name" name="vendor_name" required>
+                            <label for="buyer_name" class="form-label">Company Name *</label>
+                            <input type="text" class="form-control" id="buyer_name" name="buyer_name" required>
                         </div>
 
                         <div class="col-md-6 mb-3">
@@ -39,12 +39,12 @@
 
                     <div class="alert alert-info">
                         <i class="bi bi-info-circle"></i> 
-                        <strong>Note:</strong> After registration, you will receive a unique Vendor ID. 
+                        <strong>Note:</strong> After registration, you will receive a unique Buyer ID. 
                         Please save it for future logins.
                     </div>
 
                     <div class="d-flex justify-content-between">
-                        <a href="{{ url_for('vendor_login_page') }}" class="btn btn-secondary">
+                        <a href="{{ url_for('buyer_login_page') }}" class="btn btn-secondary">
                             <i class="bi bi-arrow-left"></i> Back to Login
                         </a>
                         <button type="submit" class="btn btn-success">

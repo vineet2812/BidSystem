@@ -1,27 +1,23 @@
 {% extends "base.html" %}
 
-{% block title %}View Bid - Vendor{% endblock %}
+{% block title %}Submit Bid - Buyer{% endblock %}
 
 {% block content %}
 <div class="mb-4">
-    <a href="{{ url_for('vendor_dashboard') }}" class="btn btn-sm btn-outline-secondary mb-2">
+    <a href="{{ url_for('buyer_dashboard') }}" class="btn btn-sm btn-outline-secondary mb-2">
         <i class="bi bi-arrow-left"></i> Back to Dashboard
     </a>
-    <h2><i class="bi bi-file-text"></i> Bid Details: {{ bid.bid_id }}</h2>
+    <h2><i class="bi bi-file-earmark-text"></i> Submit Bid: {{ bid.bid_id }}</h2>
 </div>
 
 <div class="row">
     <div class="col-md-8">
-        <!-- Bid Information -->
         <div class="card mb-3">
-            <div class="card-header">
-                <h5 class="mb-0">Contract Information</h5>
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Contract Details</h5>
             </div>
             <div class="card-body">
                 <dl class="row">
-                    <dt class="col-sm-4">Bid ID:</dt>
-                    <dd class="col-sm-8"><strong>{{ bid.bid_id }}</strong></dd>
-
                     <dt class="col-sm-4">Contract Name:</dt>
                     <dd class="col-sm-8">{{ bid.contract_name }}</dd>
 
@@ -31,27 +27,16 @@
                     <dt class="col-sm-4">Contract Value:</dt>
                     <dd class="col-sm-8">${{ "{:,.2f}".format(bid.contract_value) }}</dd>
 
-                    <dt class="col-sm-4">Created By:</dt>
-                    <dd class="col-sm-8">{{ bid.vendor_name }}</dd>
-
                     <dt class="col-sm-4">Created Date:</dt>
                     <dd class="col-sm-8">{{ bid.created_date }}</dd>
-
-                    <dt class="col-sm-4">Status:</dt>
-                    <dd class="col-sm-8">
-                        <span class="badge bg-{{ 'success' if bid.status == 'Approved' else 'warning' }}">
-                            {{ bid.status }}
-                        </span>
-                    </dd>
                 </dl>
             </div>
         </div>
 
-        <!-- Bid Items -->
         {% if not items.empty %}
         <div class="card mb-3">
             <div class="card-header">
-                <h5 class="mb-0"><i class="bi bi-list-ul"></i> Bid Items</h5>
+                <h5 class="mb-0"><i class="bi bi-list-ul"></i> Required Items/Deliverables</h5>
             </div>
             <div class="card-body">
                 <div class="table-responsive">
@@ -80,8 +65,53 @@
         </div>
         {% endif %}
 
-        <!-- History -->
         <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">Submit Your Comment</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <strong>Responding as:</strong> {{ buyer.buyer_name }} ({{ buyer.buyer_id }})
+                    {% if bid.submission_date %}<br><strong>Last Submitted:</strong> {{ bid.submission_date }}{% endif %}
+                </div>
+
+                {% if can_submit %}
+                <form method="POST" action="{{ url_for('submit_bid', bid_id=bid.bid_id) }}">
+                    <div class="mb-3">
+                        <label for="buyer_comment" class="form-label">Comment for A1 Approval *</label>
+                        <textarea class="form-control" id="buyer_comment" name="buyer_comment" 
+                                  rows="5" required placeholder="Summarise your proposal, approach, or key notes">{{ bid.buyer_comment }}</textarea>
+                        <div class="form-text">This comment is sent directly with the approval request.</div>
+                    </div>
+
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('buyer_dashboard') }}" class="btn btn-secondary">
+                            <i class="bi bi-arrow-left"></i> Cancel
+                        </a>
+                        <button type="submit" class="btn btn-success">
+                            <i class="bi bi-send"></i> Submit for Approval
+                        </button>
+                    </div>
+                </form>
+                {% else %}
+                <div class="alert alert-success">
+                    <i class="bi bi-check-circle"></i> Your response has been submitted and is awaiting approval.
+                </div>
+                {% if bid.buyer_comment %}
+                <p>
+                    <strong>Your Comment:</strong><br>
+                    {{ bid.buyer_comment }}
+                </p>
+                {% endif %}
+                <a href="{{ url_for('buyer_dashboard') }}" class="btn btn-outline-primary">
+                    <i class="bi bi-arrow-left"></i> Back to Dashboard
+                </a>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- History -->
+        <div class="card mt-3">
             <div class="card-header">
                 <h5 class="mb-0">History & Comments</h5>
             </div>
@@ -125,73 +155,32 @@
     </div>
 
     <div class="col-md-4">
-        <div class="card mb-3">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h5><i class="bi bi-info-circle"></i> Submission Guidelines</h5>
+                <ul class="small">
+                    <li>Review the contract details carefully</li>
+                    <li>Confirm you understand the requested deliverables</li>
+                    <li>Summarise your approach or key commitments</li>
+                    <li>Highlight any critical assumptions or risks</li>
+                    <li>Ensure the comment is clear and concise</li>
+                    <li>Submit once you are ready for A1 approval</li>
+                </ul>
+                <hr>
+                <p class="small mb-0">
+                    <strong>Note:</strong> Once submitted, the bid moves to A1 approval.
+                </p>
+            </div>
+        </div>
+
+        <div class="card mt-3">
             <div class="card-header">
-                <h5 class="mb-0">Approval Status</h5>
+                <h6 class="mb-0">Your Profile</h6>
             </div>
             <div class="card-body">
-                <div class="mb-3">
-                    <strong>Assigned Buyer:</strong><br>
-                    {% if assigned_buyer %}
-                        <div><strong>{{ assigned_buyer.buyer_name }}</strong> ({{ assigned_buyer.buyer_id }})</div>
-                        <div class="small text-muted">{{ assigned_buyer.contact_email }} | {{ assigned_buyer.contact_phone }}</div>
-                    {% else %}
-                        <span class="text-muted">Not assigned</span>
-                    {% endif %}
-                </div>
-
-                {% if bid.buyer_comment %}
-                <div class="mb-3">
-                    <strong>Buyer Comment:</strong><br>
-                    <em>{{ bid.buyer_comment }}</em>
-                    {% if bid.submission_date %}
-                    <div class="small text-muted">Submitted: {{ bid.submission_date }}</div>
-                    {% endif %}
-                </div>
-                {% endif %}
-
-                {% if bid.vendor_justification %}
-                <div class="mb-3">
-                    <strong>Vendor Justification:</strong><br>
-                    <em>{{ bid.vendor_justification }}</em>
-                </div>
-                {% endif %}
-
-                <hr>
-
-                <div class="mb-3">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <strong>A1 Approver:</strong>
-                        <span class="badge bg-{{ 'success' if bid.a1_status == 'Approved' else 'warning' if bid.a1_status == 'Pending' else 'danger' }}">
-                            {{ bid.a1_status }}
-                        </span>
-                    </div>
-                    {% if bid.a1_comment %}
-                    <small class="text-muted">{{ bid.a1_comment }}</small><br>
-                    <small class="text-muted">{{ bid.a1_date }}</small>
-                    {% endif %}
-                </div>
-
-                <div class="mb-3">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <strong>A2 Approver:</strong>
-                        <span class="badge bg-{{ 'success' if bid.a2_status == 'Approved' else 'warning' if bid.a2_status == 'Pending' else 'danger' }}">
-                            {{ bid.a2_status }}
-                        </span>
-                    </div>
-                    {% if bid.a2_comment %}
-                    <small class="text-muted">{{ bid.a2_comment }}</small><br>
-                    <small class="text-muted">{{ bid.a2_date }}</small>
-                    {% endif %}
-                </div>
-
-                {% if bid.status == 'Approved' %}
-                <hr>
-                <a href="{{ url_for('download_pdf', bid_id=bid.bid_id) }}" 
-                   class="btn btn-success w-100">
-                    <i class="bi bi-download"></i> Download PDF
-                </a>
-                {% endif %}
+                <p class="small mb-1"><strong>Company:</strong> {{ buyer.buyer_name }}</p>
+                <p class="small mb-1"><strong>Email:</strong> {{ buyer.contact_email }}</p>
+                <p class="small mb-0"><strong>Phone:</strong> {{ buyer.contact_phone }}</p>
             </div>
         </div>
     </div>

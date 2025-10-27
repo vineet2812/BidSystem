@@ -48,12 +48,12 @@ def _clean_bids_dataframe(bids_df):
         'contract_name',
         'contract_description',
         'status',
-        'selected_vendor_id',
+        'selected_buyer_id',
         'selected_submission_id',
-        'admin_justification',
+        'vendor_justification',
         'submission_date',
-        'vendor_comment',
-        'admin_name',
+        'buyer_comment',
+        'vendor_name',
         'a1_status',
         'a1_comment',
         'a1_date',
@@ -112,11 +112,11 @@ def get_next_bid_id():
 
 def get_next_submission_id():
     """Generate next submission ID"""
-    vendor_bids_df = read_sheet('VendorBids')
-    if vendor_bids_df.empty or len(vendor_bids_df) == 0:
+    buyer_bids_df = read_sheet('BuyerBids')
+    if buyer_bids_df.empty or len(buyer_bids_df) == 0:
         return 'SUB001'
     
-    existing_ids = vendor_bids_df['submission_id'].dropna().tolist()
+    existing_ids = buyer_bids_df['submission_id'].dropna().tolist()
     if not existing_ids:
         return 'SUB001'
     
@@ -131,13 +131,13 @@ def get_next_history_id():
     
     return history_df['history_id'].max() + 1
 
-def get_next_vendor_id():
-    """Generate next vendor ID"""
-    vendors_df = read_sheet('Vendors')
-    if vendors_df.empty or len(vendors_df) == 0:
+def get_next_buyer_id():
+    """Generate next buyer ID"""
+    buyers_df = read_sheet('Buyers')
+    if buyers_df.empty or len(buyers_df) == 0:
         return 'V001'
     
-    existing_ids = vendors_df['vendor_id'].dropna().tolist()
+    existing_ids = buyers_df['buyer_id'].dropna().tolist()
     if not existing_ids:
         return 'V001'
     
@@ -157,11 +157,11 @@ def get_next_item_id():
     max_num = max([int(item_id.replace('ITEM', '')) for item_id in existing_ids if isinstance(item_id, str)])
     return f'ITEM{str(max_num + 1).zfill(3)}'
 
-def create_bid(contract_name, contract_description, contract_value, admin_name, assigned_vendor_id=None):
-    """Create a new bid and optionally assign a vendor immediately"""
+def create_bid(contract_name, contract_description, contract_value, vendor_name, assigned_buyer_id=None):
+    """Create a new bid and optionally assign a buyer immediately"""
     bids_df = _clean_bids_dataframe(read_sheet('Bids'))
 
-    initial_status = 'Awaiting Vendor' if assigned_vendor_id else 'Draft'
+    initial_status = 'Awaiting Buyer' if assigned_buyer_id else 'Draft'
 
     new_bid = {
         'bid_id': get_next_bid_id(),
@@ -169,13 +169,13 @@ def create_bid(contract_name, contract_description, contract_value, admin_name, 
         'contract_description': contract_description,
         'contract_value': contract_value,
         'created_date': current_timestamp(),
-        'admin_name': admin_name,
+        'vendor_name': vendor_name,
         'status': initial_status,
-        'selected_vendor_id': assigned_vendor_id or '',
+        'selected_buyer_id': assigned_buyer_id or '',
         'selected_submission_id': '',
-        'admin_justification': '',
+        'vendor_justification': '',
         'submission_date': '',
-        'vendor_comment': '',
+        'buyer_comment': '',
         'a1_status': 'Pending',
         'a1_comment': '',
         'a1_date': '',
@@ -188,64 +188,64 @@ def create_bid(contract_name, contract_description, contract_value, admin_name, 
     write_sheet(bids_df, 'Bids')
     
     # Add to history
-    add_history(new_bid['bid_id'], admin_name, 'Admin', 'Created Bid', 
+    add_history(new_bid['bid_id'], vendor_name, 'Vendor', 'Created Bid', 
                 f"Created new bid: {contract_name}", None, initial_status)
 
-    if assigned_vendor_id:
-        vendor = get_vendor_by_id(assigned_vendor_id)
-        vendor_label = vendor['vendor_name'] if vendor else assigned_vendor_id
+    if assigned_buyer_id:
+        buyer = get_buyer_by_id(assigned_buyer_id)
+        buyer_label = buyer['buyer_name'] if buyer else assigned_buyer_id
         add_history(
             new_bid['bid_id'],
-            admin_name,
-            'Admin',
-            'Assigned Vendor',
-            f"Assigned vendor {vendor_label} ({assigned_vendor_id})",
+            vendor_name,
+            'Vendor',
+            'Assigned Buyer',
+            f"Assigned buyer {buyer_label} ({assigned_buyer_id})",
             initial_status,
-            'Awaiting Vendor'
+            'Awaiting Buyer'
         )
     
     return new_bid['bid_id']
 
-def submit_vendor_bid(bid_id, vendor_id, vendor_name, bid_amount, bid_description):
-    """Submit a vendor bid"""
-    vendor_bids_df = read_sheet('VendorBids')
+def submit_buyer_bid(bid_id, buyer_id, buyer_name, bid_amount, bid_description):
+    """Submit a buyer bid"""
+    buyer_bids_df = read_sheet('BuyerBids')
     
     new_submission = {
         'submission_id': get_next_submission_id(),
         'bid_id': bid_id,
-        'vendor_id': vendor_id,
-        'vendor_name': vendor_name,
+        'buyer_id': buyer_id,
+        'buyer_name': buyer_name,
         'bid_amount': bid_amount,
         'bid_description': bid_description,
         'submission_date': current_timestamp(),
         'is_selected': False
     }
     
-    vendor_bids_df = pd.concat([vendor_bids_df, pd.DataFrame([new_submission])], ignore_index=True)
-    write_sheet(vendor_bids_df, 'VendorBids')
+    buyer_bids_df = pd.concat([buyer_bids_df, pd.DataFrame([new_submission])], ignore_index=True)
+    write_sheet(buyer_bids_df, 'BuyerBids')
     
     # Add to history
-    add_history(bid_id, vendor_name, 'Vendor', 'Submitted Bid', 
+    add_history(bid_id, buyer_name, 'Buyer', 'Submitted Bid', 
                 f"Bid Amount: {bid_amount}", None, None)
     
     return new_submission['submission_id']
 
 
-def vendor_submit_comment(bid_id, vendor_id, comment):
-    """Assigned vendor submits a comment to trigger A1 approval"""
+def buyer_submit_comment(bid_id, buyer_id, comment):
+    """Assigned buyer submits a comment to trigger A1 approval"""
     bids_df = read_sheet('Bids')
 
     matched_bid = bids_df[bids_df['bid_id'] == bid_id]
     if matched_bid.empty:
         return False, "Bid not found."
 
-    stored_vendor_id = str(matched_bid.iloc[0].get('selected_vendor_id', '')).strip()
-    if stored_vendor_id != str(vendor_id).strip():
+    stored_buyer_id = str(matched_bid.iloc[0].get('selected_buyer_id', '')).strip()
+    if stored_buyer_id != str(buyer_id).strip():
         return False, "You are not assigned to this bid."
 
     previous_status = matched_bid.iloc[0].get('status', '')
 
-    bids_df.loc[bids_df['bid_id'] == bid_id, 'vendor_comment'] = comment
+    bids_df.loc[bids_df['bid_id'] == bid_id, 'buyer_comment'] = comment
     bids_df.loc[bids_df['bid_id'] == bid_id, 'submission_date'] = current_timestamp()
     bids_df.loc[bids_df['bid_id'] == bid_id, 'selected_submission_id'] = 'ASSIGNED'
     bids_df.loc[bids_df['bid_id'] == bid_id, 'status'] = 'Pending A1'
@@ -253,12 +253,12 @@ def vendor_submit_comment(bid_id, vendor_id, comment):
     reset_approval_columns(bids_df, bid_id)
     write_sheet(bids_df, 'Bids')
 
-    vendor = get_vendor_by_id(vendor_id)
-    vendor_name = vendor['vendor_name'] if vendor else vendor_id
+    buyer = get_buyer_by_id(buyer_id)
+    buyer_name = buyer['buyer_name'] if buyer else buyer_id
     add_history(
         bid_id,
-        vendor_name,
-        'Vendor',
+        buyer_name,
+        'Buyer',
         'Submitted for A1 Approval',
         comment,
         previous_status,
@@ -267,10 +267,10 @@ def vendor_submit_comment(bid_id, vendor_id, comment):
 
     return True, None
 
-def select_vendor_and_submit_for_approval(bid_id, submission_id, justification, admin_name):
-    """Admin selects a specific vendor submission and submits for A1 approval"""
+def select_buyer_and_submit_for_approval(bid_id, submission_id, justification, vendor_name):
+    """Admin selects a specific buyer submission and submits for A1 approval"""
     bids_df = read_sheet('Bids')
-    vendor_bids_df = read_sheet('VendorBids')
+    buyer_bids_df = read_sheet('BuyerBids')
 
     bid_row = bids_df[bids_df['bid_id'] == bid_id]
     if bid_row.empty:
@@ -279,46 +279,46 @@ def select_vendor_and_submit_for_approval(bid_id, submission_id, justification, 
     normalized_submission_id = str(submission_id).strip()
     normalized_bid_id = str(bid_id).strip()
 
-    submission_row = vendor_bids_df[
-        (vendor_bids_df['bid_id'].astype(str) == normalized_bid_id) &
-        (vendor_bids_df['submission_id'].astype(str) == normalized_submission_id)
+    submission_row = buyer_bids_df[
+        (buyer_bids_df['bid_id'].astype(str) == normalized_bid_id) &
+        (buyer_bids_df['submission_id'].astype(str) == normalized_submission_id)
     ]
 
     if submission_row.empty:
         return False, "Selected submission could not be located for this bid"
 
-    vendor_id = submission_row.iloc[0]['vendor_id']
+    buyer_id = submission_row.iloc[0]['buyer_id']
     current_status = bid_row.iloc[0]['status']
 
-    bids_df.loc[bids_df['bid_id'] == bid_id, 'selected_vendor_id'] = vendor_id
+    bids_df.loc[bids_df['bid_id'] == bid_id, 'selected_buyer_id'] = buyer_id
     bids_df.loc[bids_df['bid_id'] == bid_id, 'selected_submission_id'] = normalized_submission_id
-    bids_df.loc[bids_df['bid_id'] == bid_id, 'admin_justification'] = justification
+    bids_df.loc[bids_df['bid_id'] == bid_id, 'vendor_justification'] = justification
     bids_df.loc[bids_df['bid_id'] == bid_id, 'submission_date'] = current_timestamp()
     bids_df.loc[bids_df['bid_id'] == bid_id, 'status'] = 'Pending A1'
 
     reset_approval_columns(bids_df, bid_id)
     write_sheet(bids_df, 'Bids')
 
-    vendor_bids_df.loc[vendor_bids_df['bid_id'] == bid_id, 'is_selected'] = False
-    vendor_bids_df.loc[
-        (vendor_bids_df['bid_id'].astype(str) == normalized_bid_id) &
-        (vendor_bids_df['submission_id'].astype(str) == normalized_submission_id),
+    buyer_bids_df.loc[buyer_bids_df['bid_id'] == bid_id, 'is_selected'] = False
+    buyer_bids_df.loc[
+        (buyer_bids_df['bid_id'].astype(str) == normalized_bid_id) &
+        (buyer_bids_df['submission_id'].astype(str) == normalized_submission_id),
         'is_selected'
     ] = True
-    write_sheet(vendor_bids_df, 'VendorBids')
+    write_sheet(buyer_bids_df, 'BuyerBids')
 
     action_text = 'Resubmitted for A1 Approval' if current_status == 'Under Review' else 'Selected Submission & Submitted for A1 Approval'
     add_history(
         bid_id,
-        admin_name,
-        'Admin',
+        vendor_name,
+        'Vendor',
         action_text,
-        f"Selected Submission: {normalized_submission_id} (Vendor: {vendor_id}), Justification: {justification}",
+        f"Selected Submission: {normalized_submission_id} (Buyer: {buyer_id}), Justification: {justification}",
         current_status,
         'Pending A1'
     )
 
-    return True, vendor_id
+    return True, buyer_id
 
 def a1_approve(bid_id, comment, approver_name):
     """A1 Approver approves the bid"""
@@ -341,12 +341,12 @@ def a1_reject(bid_id, comment, approver_name):
     bids_df.loc[bids_df['bid_id'] == bid_id, 'a1_status'] = 'Rejected'
     bids_df.loc[bids_df['bid_id'] == bid_id, 'a1_comment'] = comment
     bids_df.loc[bids_df['bid_id'] == bid_id, 'a1_date'] = current_timestamp()
-    bids_df.loc[bids_df['bid_id'] == bid_id, 'status'] = 'Awaiting Vendor'
+    bids_df.loc[bids_df['bid_id'] == bid_id, 'status'] = 'Awaiting Buyer'
     
     write_sheet(bids_df, 'Bids')
     
     # Add to history
-    add_history(bid_id, approver_name, 'A1 Approver', 'Rejected', comment, 'Pending A1', 'Awaiting Vendor')
+    add_history(bid_id, approver_name, 'A1 Approver', 'Rejected', comment, 'Pending A1', 'Awaiting Buyer')
 
 def a2_approve(bid_id, comment, approver_name):
     """A2 Approver approves the bid"""
@@ -380,24 +380,24 @@ def a2_reject(bid_id, comment, approver_name):
 def a2_reopen_bid(bid_id, comment, approver_name):
     """A2 Approver reopens an approved bid for modifications"""
     bids_df = read_sheet('Bids')
-    vendor_bids_df = read_sheet('VendorBids')
+    buyer_bids_df = read_sheet('BuyerBids')
 
     # Reset bid to Open for Bidding status so admin can edit and resubmit
-    bids_df.loc[bids_df['bid_id'] == bid_id, 'status'] = 'Awaiting Vendor'
+    bids_df.loc[bids_df['bid_id'] == bid_id, 'status'] = 'Awaiting Buyer'
     reset_approval_columns(bids_df, bid_id)
     bids_df.loc[bids_df['bid_id'] == bid_id, 'selected_submission_id'] = ''
-    bids_df.loc[bids_df['bid_id'] == bid_id, 'admin_justification'] = ''
+    bids_df.loc[bids_df['bid_id'] == bid_id, 'vendor_justification'] = ''
     bids_df.loc[bids_df['bid_id'] == bid_id, 'submission_date'] = ''
-    bids_df.loc[bids_df['bid_id'] == bid_id, 'vendor_comment'] = ''
+    bids_df.loc[bids_df['bid_id'] == bid_id, 'buyer_comment'] = ''
 
     write_sheet(bids_df, 'Bids')
 
-    # Clear any previously selected vendor flags for this bid
-    vendor_bids_df.loc[vendor_bids_df['bid_id'] == bid_id, 'is_selected'] = False
-    write_sheet(vendor_bids_df, 'VendorBids')
+    # Clear any previously selected buyer flags for this bid
+    buyer_bids_df.loc[buyer_bids_df['bid_id'] == bid_id, 'is_selected'] = False
+    write_sheet(buyer_bids_df, 'BuyerBids')
 
     # Add to history
-    add_history(bid_id, approver_name, 'A2 Approver', 'Reopened Bid for Modifications', comment, 'Approved', 'Awaiting Vendor')
+    add_history(bid_id, approver_name, 'A2 Approver', 'Reopened Bid for Modifications', comment, 'Approved', 'Awaiting Buyer')
 
 def add_history(bid_id, action_by, role, action, comment, previous_status, new_status):
     """Add entry to history"""
@@ -418,12 +418,12 @@ def add_history(bid_id, action_by, role, action, comment, previous_status, new_s
     history_df = pd.concat([history_df, pd.DataFrame([new_history])], ignore_index=True)
     write_sheet(history_df, 'History')
 
-def get_all_vendors():
-    """Get all vendors without legacy capability column"""
-    vendors_df = read_sheet('Vendors')
-    if 'technical_capability' in vendors_df.columns:
-        vendors_df = vendors_df.drop(columns=['technical_capability'])
-    return vendors_df
+def get_all_buyers():
+    """Get all buyers without legacy capability column"""
+    buyers_df = read_sheet('Buyers')
+    if 'technical_capability' in buyers_df.columns:
+        buyers_df = buyers_df.drop(columns=['technical_capability'])
+    return buyers_df
 
 def get_all_bids():
     """Get all bids"""
@@ -437,55 +437,55 @@ def get_bid_by_id(bid_id):
         return bid.iloc[0].to_dict()
     return None
 
-def get_vendor_bids_for_bid(bid_id):
-    """Get all vendor submissions for a specific bid"""
-    vendor_bids_df = read_sheet('VendorBids')
-    return vendor_bids_df[vendor_bids_df['bid_id'] == bid_id]
+def get_buyer_bids_for_bid(bid_id):
+    """Get all buyer submissions for a specific bid"""
+    buyer_bids_df = read_sheet('BuyerBids')
+    return buyer_bids_df[buyer_bids_df['bid_id'] == bid_id]
 
 def get_history_for_bid(bid_id):
     """Get history for a specific bid"""
     history_df = read_sheet('History')
     return history_df[history_df['bid_id'] == bid_id].sort_values('action_date', ascending=False)
 
-# Vendor Management Functions
-def vendor_login(vendor_id, password):
-    """Authenticate vendor login"""
-    vendors_df = read_sheet('Vendors')
-    if 'technical_capability' in vendors_df.columns:
-        vendors_df = vendors_df.drop(columns=['technical_capability'])
-    vendor = vendors_df[(vendors_df['vendor_id'] == vendor_id) & (vendors_df['password'] == password)]
-    if not vendor.empty:
-        return vendor.iloc[0].to_dict()
+# Buyer Management Functions
+def buyer_login(buyer_id, password):
+    """Authenticate buyer login"""
+    buyers_df = read_sheet('Buyers')
+    if 'technical_capability' in buyers_df.columns:
+        buyers_df = buyers_df.drop(columns=['technical_capability'])
+    buyer = buyers_df[(buyers_df['buyer_id'] == buyer_id) & (buyers_df['password'] == password)]
+    if not buyer.empty:
+        return buyer.iloc[0].to_dict()
     return None
 
-def create_vendor(vendor_name, contact_email, contact_phone, password):
-    """Create a new vendor"""
-    vendors_df = read_sheet('Vendors')
+def create_buyer(buyer_name, contact_email, contact_phone, password):
+    """Create a new buyer"""
+    buyers_df = read_sheet('Buyers')
 
-    if 'technical_capability' in vendors_df.columns:
-        vendors_df = vendors_df.drop(columns=['technical_capability'])
+    if 'technical_capability' in buyers_df.columns:
+        buyers_df = buyers_df.drop(columns=['technical_capability'])
 
-    new_vendor = {
-        'vendor_id': get_next_vendor_id(),
-        'vendor_name': vendor_name,
+    new_buyer = {
+        'buyer_id': get_next_buyer_id(),
+        'buyer_name': buyer_name,
         'contact_email': contact_email,
         'contact_phone': contact_phone,
         'password': password
     }
 
-    vendors_df = pd.concat([vendors_df, pd.DataFrame([new_vendor])], ignore_index=True)
-    write_sheet(vendors_df, 'Vendors')
+    buyers_df = pd.concat([buyers_df, pd.DataFrame([new_buyer])], ignore_index=True)
+    write_sheet(buyers_df, 'Buyers')
 
-    return new_vendor['vendor_id']
+    return new_buyer['buyer_id']
 
-def get_vendor_by_id(vendor_id):
-    """Get vendor by ID"""
-    vendors_df = read_sheet('Vendors')
-    if 'technical_capability' in vendors_df.columns:
-        vendors_df = vendors_df.drop(columns=['technical_capability'])
-    vendor = vendors_df[vendors_df['vendor_id'] == vendor_id]
-    if not vendor.empty:
-        return vendor.iloc[0].to_dict()
+def get_buyer_by_id(buyer_id):
+    """Get buyer by ID"""
+    buyers_df = read_sheet('Buyers')
+    if 'technical_capability' in buyers_df.columns:
+        buyers_df = buyers_df.drop(columns=['technical_capability'])
+    buyer = buyers_df[buyers_df['buyer_id'] == buyer_id]
+    if not buyer.empty:
+        return buyer.iloc[0].to_dict()
     return None
 
 # Bid Items Functions

@@ -42,13 +42,13 @@
                 </div>
                 <div class="col-md-6 text-end">
                     <div class="btn-group" role="group">
-                        <a href="{{ url_for('switch_role', role='Admin') }}" 
-                           class="btn btn-sm {% if role == 'Admin' %}btn-primary{% else %}btn-outline-primary{% endif %}">
-                            Admin
-                        </a>
                         <a href="{{ url_for('switch_role', role='Vendor') }}" 
-                           class="btn btn-sm {% if role == 'Vendor' %}btn-success{% else %}btn-outline-success{% endif %}">
+                           class="btn btn-sm {% if role == 'Vendor' %}btn-primary{% else %}btn-outline-primary{% endif %}">
                             Vendor
+                        </a>
+                        <a href="{{ url_for('switch_role', role='Buyer') }}" 
+                           class="btn btn-sm {% if role == 'Buyer' %}btn-success{% else %}btn-outline-success{% endif %}">
+                            Buyer
                         </a>
                         <a href="{{ url_for('switch_role', role='A1 Approver') }}" 
                            class="btn btn-sm {% if role == 'A1 Approver' %}btn-warning{% else %}btn-outline-warning{% endif %}">

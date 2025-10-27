@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Create Bid - Admin{% endblock %}
+{% block title %}Create Bid - Vendor{% endblock %}
 
 {% block content %}
 <div class="mb-4">
@@ -32,19 +32,19 @@
                         </div>
 
                         <div class="col-md-6 mb-3">
-                            <label for="assigned_vendor_id" class="form-label">Assign Vendor *</label>
-                            <select class="form-select" id="assigned_vendor_id" name="assigned_vendor_id" required>
-                                <option value="">Select vendor...</option>
-                                {% for vendor in vendors %}
-                                <option value="{{ vendor.vendor_id }}">{{ vendor.vendor_id }} - {{ vendor.vendor_name }}</option>
+                            <label for="assigned_buyer_id" class="form-label">Assign Buyer *</label>
+                            <select class="form-select" id="assigned_buyer_id" name="assigned_buyer_id" required>
+                                <option value="">Select buyer...</option>
+                                {% for buyer in buyers %}
+                                <option value="{{ buyer.buyer_id }}">{{ buyer.buyer_id }} - {{ buyer.buyer_name }}</option>
                                 {% endfor %}
                             </select>
-                            {% if not vendors %}
+                            {% if not buyers %}
                             <div class="alert alert-warning mt-2 mb-0">
-                                <i class="bi bi-info-circle"></i> No vendors available. Please register a vendor before creating a bid.
+                                <i class="bi bi-info-circle"></i> No buyers available. Please register a buyer before creating a bid.
                             </div>
                             {% else %}
-                            <div class="form-text">Assigned vendor will provide the response for this bid.</div>
+                            <div class="form-text">Assigned buyer will provide the response for this bid.</div>
                             {% endif %}
                         </div>
                     </div>
@@ -88,7 +88,7 @@
 
                     <hr>
                     <div class="d-flex justify-content-between">
-                        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
+                        <a href="{{ url_for('vendor_dashboard') }}" class="btn btn-secondary">
                             <i class="bi bi-arrow-left"></i> Cancel
                         </a>
                         <button type="submit" class="btn btn-primary">
@@ -104,12 +104,12 @@
             <div class="card-body">
                 <h5><i class="bi bi-info-circle"></i> Information</h5>
                 <p class="small">
-                    Creating a new bid will make it available for vendors to submit their proposals.
+                    Creating a new bid will make it available for buyers to submit their proposals.
                 </p>
                 <hr>
-                <h6>Assigned Vendor</h6>
+                <h6>Assigned Buyer</h6>
                 <p class="small">
-                    Choose the vendor responsible for this opportunity. The vendor receives a task to submit their comment for approval.
+                    Choose the buyer responsible for this opportunity. The buyer receives a task to submit their comment for approval.
                 </p>
                 <hr>
                 <h6>Bid Items</h6>
