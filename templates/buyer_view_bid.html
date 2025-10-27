@@ -124,21 +124,10 @@
                         {% if record.role in ['Buyer', 'A1 Approver', 'A2 Approver'] %}
                         <div class="mb-3 p-3 border-start border-3 border-primary bg-light">
                             <div class="d-flex justify-content-between">
-                                <strong>
-                                    {% if record.role == 'Buyer' %}
-                                        Buyer Comment - Approval Status
-                                    {% elif record.role == 'A1 Approver' %}
-                                        A1 Approval - Decision
-                                    {% elif record.role == 'A2 Approver' %}
-                                        A2 Final Approval - Decision
-                                    {% else %}
-                                        {{ record.action }}
-                                    {% endif %}
-                                </strong>
+                                <div class="text-muted small">
+                                    <strong>By: {{ record.action_by }} ({{ record.role }})</strong>
+                                </div>
                                 <small class="text-muted">{{ record.action_date }}</small>
-                            </div>
-                            <div class="text-muted small">
-                                By: {{ record.action_by }} ({{ record.role }})
                             </div>
                             {% if record.comment %}
                             <div class="mt-2">

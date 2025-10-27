@@ -775,23 +775,12 @@ def download_pdf(bid_id):
     y -= 0.1*inch
 
     # Check if we need a new page
-    if y < 2*inch:
-        c.showPage()
-        y = draw_header(c, height) - 0.3*inch
-    
-    # Admin Notes
-    y = draw_section(c, y, "4. ADMIN NOTES")
-    y = draw_field(c, y, "Notes", bid['vendor_justification'])
-    y = draw_field(c, y, "Submitted for Approval", bid['submission_date'])
-    y -= 0.2*inch
-    
-    # Check if we need a new page
     if y < 3*inch:
         c.showPage()
         y = draw_header(c, height) - 0.3*inch
     
     # Approval Workflow
-    y = draw_section(c, y, "5. APPROVAL WORKFLOW")
+    y = draw_section(c, y, "4. APPROVAL WORKFLOW")
     
     # A1 Approval
     c.setFont("Helvetica-Bold", 11)
@@ -824,7 +813,7 @@ def download_pdf(bid_id):
         y = draw_header(c, height) - 0.3*inch
     
     # Complete History
-    y = draw_section(c, y, "6. COMPLETE AUDIT TRAIL")
+    y = draw_section(c, y, "5. COMPLETE AUDIT TRAIL")
     c.setFont("Helvetica", 8)
     for idx, record in history.iterrows():
         if y < 1.5*inch:
