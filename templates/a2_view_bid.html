@@ -37,6 +37,39 @@
             </div>
         </div>
 
+        <!-- Bid Items -->
+        {% if not items.empty %}
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-list-ul"></i> Bid Items</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th>Description</th>
+                                <th>Quantity</th>
+                                <th>Unit</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for index, item in items.iterrows() %}
+                            <tr>
+                                <td>{{ item.item_name }}</td>
+                                <td>{{ item.item_description }}</td>
+                                <td>{{ item.quantity }}</td>
+                                <td>{{ item.unit }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Assigned Buyer Response -->
         <div class="card mb-3">
             <div class="card-header">

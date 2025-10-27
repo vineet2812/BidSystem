@@ -782,6 +782,16 @@ def download_pdf(bid_id):
     # Approval Workflow
     y = draw_section(c, y, "4. APPROVAL WORKFLOW")
     
+    # Buyer Submission
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(1*inch, y, "Buyer Submission")
+    y -= 0.2*inch
+    buyer_name = assigned_buyer.get('buyer_name') if assigned_buyer else 'N/A'
+    y = draw_field(c, y, "Buyer", buyer_name)
+    y = draw_field(c, y, "Comment", bid.get('buyer_comment') or 'No comment submitted')
+    y = draw_field(c, y, "Submitted On", bid.get('submission_date') or 'Not submitted')
+    y -= 0.2*inch
+    
     # A1 Approval
     c.setFont("Helvetica-Bold", 11)
     c.drawString(1*inch, y, "Level 1 Approval (A1)")
