@@ -27,6 +27,7 @@
                             <th>Bid ID</th>
                             <th>Contract Name</th>
                             <th>Contract Value</th>
+                            <th>Assigned Vendor</th>
                             <th>Created Date</th>
                             <th>Status</th>
                             <th>Actions</th>
@@ -38,9 +39,22 @@
                             <td><strong>{{ bid.bid_id }}</strong></td>
                             <td>{{ bid.contract_name }}</td>
                             <td>${{ "{:,.2f}".format(bid.contract_value) }}</td>
+                            <td>
+                                {% if bid.vendor_name %}
+                                    <div><strong>{{ bid.vendor_name }}</strong></div>
+                                    <div class="small text-muted">{{ bid.selected_vendor_id }}</div>
+                                    {% if bid.vendor_contact %}
+                                    <div class="small text-muted">{{ bid.vendor_contact }}</div>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-muted">Not assigned</span>
+                                {% endif %}
+                            </td>
                             <td>{{ bid.created_date }}</td>
                             <td>
-                                {% if bid.status == 'Open for Bidding' %}
+                                {% if bid.status == 'Awaiting Vendor' %}
+                                    <span class="badge bg-info status-badge">{{ bid.status }}</span>
+                                {% elif bid.status == 'Open for Bidding' %}
                                     <span class="badge bg-info status-badge">{{ bid.status }}</span>
                                 {% elif bid.status == 'Pending A1' %}
                                     <span class="badge bg-warning status-badge">{{ bid.status }}</span>

@@ -37,95 +37,50 @@
             </div>
         </div>
 
-        <!-- Selected Vendor Details -->
+        <!-- Assigned Vendor Response -->
         <div class="card mb-3">
             <div class="card-header">
-                <h5 class="mb-0">Selected Vendor Bid</h5>
+                <h5 class="mb-0">Assigned Vendor Response</h5>
             </div>
             <div class="card-body">
-                {% if vendor_bid.empty %}
-                    <p class="text-muted">No vendor selected</p>
+                {% if assigned_vendor %}
+                <dl class="row">
+                    <dt class="col-sm-4">Vendor ID:</dt>
+                    <dd class="col-sm-8">{{ assigned_vendor.vendor_id }}</dd>
+
+                    <dt class="col-sm-4">Vendor Name:</dt>
+                    <dd class="col-sm-8">{{ assigned_vendor.vendor_name }}</dd>
+
+                    <dt class="col-sm-4">Contact Email:</dt>
+                    <dd class="col-sm-8">{{ assigned_vendor.contact_email }}</dd>
+
+                    <dt class="col-sm-4">Contact Phone:</dt>
+                    <dd class="col-sm-8">{{ assigned_vendor.contact_phone }}</dd>
+                </dl>
+
+                {% if bid.vendor_comment %}
+                <div class="alert alert-info">
+                    <strong>Vendor Comment:</strong><br>
+                    {{ bid.vendor_comment }}
+                    {% if bid.submission_date %}
+                    <div class="small text-muted mt-2">Submitted on {{ bid.submission_date }}</div>
+                    {% endif %}
+                </div>
                 {% else %}
-                    {% set v_bid = vendor_bid.iloc[0] %}
-                    <dl class="row">
-                        <dt class="col-sm-4">Vendor ID:</dt>
-                        <dd class="col-sm-8">{{ v_bid.vendor_id }}</dd>
-
-                        <dt class="col-sm-4">Vendor Name:</dt>
-                        <dd class="col-sm-8">{{ v_bid.vendor_name }}</dd>
-
-                        <dt class="col-sm-4">Submission ID:</dt>
-                        <dd class="col-sm-8">{{ v_bid.submission_id }}</dd>
-
-                        <dt class="col-sm-4">Bid Amount:</dt>
-                        <dd class="col-sm-8"><strong>${{ "{:,.2f}".format(v_bid.bid_amount) }}</strong></dd>
-
-                        <dt class="col-sm-4">Description:</dt>
-                        <dd class="col-sm-8">{{ v_bid.bid_description }}</dd>
-
-                        <dt class="col-sm-4">Submission Date:</dt>
-                        <dd class="col-sm-8">{{ v_bid.submission_date }}</dd>
-                    </dl>
-
-                    <div class="alert alert-info">
-                        <strong>Admin Justification:</strong><br>
-                        {{ bid.admin_justification }}
-                    </div>
+                <div class="alert alert-warning">
+                    <i class="bi bi-hourglass-split"></i> Awaiting vendor comment.
+                </div>
                 {% endif %}
-            </div>
-        </div>
 
-        <!-- All Vendor Submissions -->
-        <div class="card mb-3">
-            <div class="card-header">
-                <h5 class="mb-0">All Vendor Submissions</h5>
-            </div>
-            <div class="card-body">
-                {% if vendor_bids.empty %}
-                    <div class="alert alert-info">
-                        <i class="bi bi-info-circle"></i> No vendor bids submitted yet.
-                    </div>
                 {% else %}
-                    <div class="table-responsive">
-                        <table class="table table-hover">
-                            <thead>
-                                <tr>
-                                    <th>Vendor ID</th>
-                                    <th>Vendor Name</th>
-                                    <th>Submission ID</th>
-                                    <th>Rating</th>
-                                    <th>Bid Amount</th>
-                                    <th>Proposal Summary</th>
-                                    <th>Submission Date</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for index, vendor_bid_item in vendor_bids.iterrows() %}
-                                <tr class="{{ 'table-success' if vendor_bid_item.is_selected else '' }}">
-                                    <td>{{ vendor_bid_item.vendor_id }}</td>
-                                    <td>{{ vendor_bid_item.vendor_name }}</td>
-                                    <td>{{ vendor_bid_item.submission_id }}</td>
-                                    <td>
-                                        <span class="badge bg-info">{{ vendor_bid_item.technical_capability }}/5</span>
-                                    </td>
-                                    <td>${{ "{:,.2f}".format(vendor_bid_item.bid_amount) }}</td>
-                                    <td>
-                                        <small>{{ vendor_bid_item.bid_description[:100] }}{% if vendor_bid_item.bid_description|length > 100 %}...{% endif %}</small>
-                                    </td>
-                                    <td>{{ vendor_bid_item.submission_date }}</td>
-                                    <td>
-                                        {% if vendor_bid_item.is_selected %}
-                                            <span class="badge bg-success">Selected</span>
-                                        {% else %}
-                                            <span class="badge bg-secondary">Not Selected</span>
-                                        {% endif %}
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
+                <p class="text-muted">No vendor assigned.</p>
+                {% endif %}
+
+                {% if bid.admin_justification %}
+                <div class="mt-3">
+                    <strong>Admin Notes:</strong>
+                    <p class="mb-0"><em>{{ bid.admin_justification }}</em></p>
+                </div>
                 {% endif %}
             </div>
         </div>
@@ -161,9 +116,20 @@
                     <p class="text-muted">No history available.</p>
                 {% else %}
                     {% for index, record in history.iterrows() %}
+                    {% if record.role in ['Vendor', 'A1 Approver', 'A2 Approver'] %}
                     <div class="mb-3 p-3 border-start border-3 border-primary bg-light">
                         <div class="d-flex justify-content-between">
-                            <strong>{{ record.action }}</strong>
+                            <strong>
+                                {% if record.role == 'Vendor' %}
+                                    Vendor Comment - Approval Status
+                                {% elif record.role == 'A1 Approver' %}
+                                    A1 Approval - Decision
+                                {% elif record.role == 'A2 Approver' %}
+                                    A2 Final Approval - Decision
+                                {% else %}
+                                    {{ record.action }}
+                                {% endif %}
+                            </strong>
                             <small class="text-muted">{{ record.action_date }}</small>
                         </div>
                         <div class="text-muted small">
@@ -175,6 +141,7 @@
                         </div>
                         {% endif %}
                     </div>
+                    {% endif %}
                     {% endfor %}
                 {% endif %}
             </div>
@@ -266,7 +233,7 @@
                     <form method="POST" action="{{ url_for('a2_reopen_bid', bid_id=bid.bid_id) }}">
                         <div class="modal-body">
                             <div class="alert alert-warning">
-                                <strong>Warning:</strong> Reopening this bid will reset all approvals and return it to "Open for Bidding" status.
+                                <strong>Warning:</strong> Reopening this bid will reset all approvals and return it to "Awaiting Vendor" status.
                             </div>
                             <div class="mb-3">
                                 <label for="reopen_comment" class="form-label">Reason for Reopening *</label>
@@ -302,7 +269,7 @@
                 <ul class="small">
                     <li>This is the final approval stage</li>
                     <li>Review all previous decisions and comments</li>
-                    <li>Verify vendor selection and A1 approval</li>
+                    <li>Verify the assigned vendor response and A1 approval</li>
                     <li>Provide comprehensive final comments</li>
                     <li>Approve to finalize or reject to send back to A1</li>
                     <li>PDF will be available after final approval</li>

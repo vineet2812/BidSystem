@@ -7,8 +7,7 @@
     <div>
         <h2><i class="bi bi-briefcase"></i> Vendor Dashboard</h2>
         <p class="text-muted mb-0">
-            Logged in as: <strong>{{ session.vendor_name }}</strong> 
-            (Technical Rating: {{ vendor_capability }}/5)
+            Logged in as: <strong>{{ session.vendor_name }}</strong>
             <a href="{{ url_for('vendor_logout') }}" class="btn btn-sm btn-outline-danger ms-2">
                 <i class="bi bi-box-arrow-right"></i> Logout
             </a>
@@ -18,45 +17,72 @@
 
 <div class="card">
     <div class="card-header">
-        <h5 class="mb-0">Available Bids (Matching Your Technical Capability)</h5>
+        <h5 class="mb-0">Assigned Bids</h5>
     </div>
     <div class="card-body">
         {% if bids.empty %}
             <div class="alert alert-info">
-                <i class="bi bi-info-circle"></i> No open bids available that match your technical capability rating at the moment.
+                <i class="bi bi-info-circle"></i> No bids are currently assigned to you.
             </div>
         {% else %}
-            <div class="row">
-                {% for index, bid in bids.iterrows() %}
-                <div class="col-md-6 mb-3">
-                    <div class="card bid-card h-100">
-                        <div class="card-body">
-                            <h5 class="card-title">{{ bid.contract_name }}</h5>
-                            <h6 class="card-subtitle mb-2 text-muted">{{ bid.bid_id }}</h6>
-                            <p class="card-text">{{ bid.contract_description[:100] }}...</p>
-                            <p class="mb-2">
-                                <strong>Contract Value:</strong> ${{ "{:,.2f}".format(bid.contract_value) }}
-                            </p>
-                            {% if bid.min_technical_capability > 0 %}
-                            <p class="mb-2">
-                                <strong>Required Rating:</strong> 
-                                <span class="badge bg-info">{{ bid.min_technical_capability }}/5</span>
-                            </p>
-                            {% endif %}
-                            <p class="mb-2">
-                                <strong>Created:</strong> {{ bid.created_date }}
-                            </p>
-                            <span class="badge bg-success mb-3">{{ bid.status }}</span>
-                            <div>
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Bid ID</th>
+                            <th>Contract Name</th>
+                            <th>Contract Value</th>
+                            <th>Created Date</th>
+                            <th>Status</th>
+                            <th>Submission Date</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for index, bid in bids.iterrows() %}
+                        <tr>
+                            <td><strong>{{ bid.bid_id }}</strong></td>
+                            <td>
+                                <div><strong>{{ bid.contract_name }}</strong></div>
+                                <div class="small text-muted">{{ bid.contract_description[:60] }}{% if bid.contract_description|length > 60 %}...{% endif %}</div>
+                            </td>
+                            <td>${{ "{:,.2f}".format(bid.contract_value) }}</td>
+                            <td>{{ bid.created_date }}</td>
+                            <td>
+                                {% if bid.status == 'Awaiting Vendor' %}
+                                    <span class="badge bg-warning status-badge">{{ bid.status }}</span>
+                                {% elif bid.status == 'Pending A1' %}
+                                    <span class="badge bg-info status-badge">{{ bid.status }}</span>
+                                {% elif bid.status == 'Pending A2' %}
+                                    <span class="badge bg-info status-badge">{{ bid.status }}</span>
+                                {% elif bid.status == 'Approved' %}
+                                    <span class="badge bg-success status-badge">{{ bid.status }}</span>
+                                {% else %}
+                                    <span class="badge bg-secondary status-badge">{{ bid.status }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if bid.submission_date %}
+                                    {{ bid.submission_date }}
+                                {% else %}
+                                    <span class="text-muted">Not submitted</span>
+                                {% endif %}
+                            </td>
+                            <td>
                                 <a href="{{ url_for('vendor_view_bid', bid_id=bid.bid_id) }}" 
-                                   class="btn btn-primary">
-                                    <i class="bi bi-file-earmark-text"></i> View & Submit Bid
+                                   class="btn btn-sm btn-primary">
+                                    <i class="bi bi-{% if bid.status == 'Awaiting Vendor' %}send{% else %}eye{% endif %}"></i>
+                                    {% if bid.status == 'Awaiting Vendor' %}
+                                        Submit
+                                    {% else %}
+                                        View
+                                    {% endif %}
                                 </a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                {% endfor %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
         {% endif %}
     </div>

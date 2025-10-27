@@ -27,16 +27,6 @@
                     <dt class="col-sm-4">Contract Value:</dt>
                     <dd class="col-sm-8">${{ "{:,.2f}".format(bid.contract_value) }}</dd>
 
-                    <dt class="col-sm-4">Min Technical Rating:</dt>
-                    <dd class="col-sm-8">
-                        {% if bid.min_technical_capability > 0 %}
-                            {{ bid.min_technical_capability }}/5
-                            <span class="badge bg-success">You qualify ({{ vendor.technical_capability }}/5)</span>
-                        {% else %}
-                            Not specified
-                        {% endif %}
-                    </dd>
-
                     <dt class="col-sm-4">Created Date:</dt>
                     <dd class="col-sm-8">{{ bid.created_date }}</dd>
                 </dl>
@@ -77,27 +67,21 @@
 
         <div class="card">
             <div class="card-header bg-success text-white">
-                <h5 class="mb-0">Submit Your Bid</h5>
+                <h5 class="mb-0">Submit Your Comment</h5>
             </div>
             <div class="card-body">
                 <div class="alert alert-info">
-                    <strong>Submitting as:</strong> {{ vendor.vendor_name }} ({{ vendor.vendor_id }})
-                    <br>
-                    <strong>Your Technical Rating:</strong> {{ vendor.technical_capability }}/5
+                    <strong>Responding as:</strong> {{ vendor.vendor_name }} ({{ vendor.vendor_id }})
+                    {% if bid.submission_date %}<br><strong>Last Submitted:</strong> {{ bid.submission_date }}{% endif %}
                 </div>
 
+                {% if can_submit %}
                 <form method="POST" action="{{ url_for('submit_bid', bid_id=bid.bid_id) }}">
                     <div class="mb-3">
-                        <label for="bid_amount" class="form-label">Your Bid Amount ($) *</label>
-                        <input type="number" class="form-control" id="bid_amount" 
-                               name="bid_amount" step="0.01" required>
-                        <div class="form-text">Enter your competitive bid amount for this contract</div>
-                    </div>
-
-                    <div class="mb-3">
-                        <label for="bid_description" class="form-label">Bid Description/Proposal *</label>
-                        <textarea class="form-control" id="bid_description" name="bid_description" 
-                                  rows="5" required placeholder="Describe your proposal, capabilities, timeline, etc."></textarea>
+                        <label for="vendor_comment" class="form-label">Comment for A1 Approval *</label>
+                        <textarea class="form-control" id="vendor_comment" name="vendor_comment" 
+                                  rows="5" required placeholder="Summarise your proposal, approach, or key notes">{{ bid.vendor_comment }}</textarea>
+                        <div class="form-text">This comment is sent directly with the approval request.</div>
                     </div>
 
                     <div class="d-flex justify-content-between">
@@ -105,10 +89,67 @@
                             <i class="bi bi-arrow-left"></i> Cancel
                         </a>
                         <button type="submit" class="btn btn-success">
-                            <i class="bi bi-check-circle"></i> Submit Bid
+                            <i class="bi bi-send"></i> Submit for Approval
                         </button>
                     </div>
                 </form>
+                {% else %}
+                <div class="alert alert-success">
+                    <i class="bi bi-check-circle"></i> Your response has been submitted and is awaiting approval.
+                </div>
+                {% if bid.vendor_comment %}
+                <p>
+                    <strong>Your Comment:</strong><br>
+                    {{ bid.vendor_comment }}
+                </p>
+                {% endif %}
+                <a href="{{ url_for('vendor_dashboard') }}" class="btn btn-outline-primary">
+                    <i class="bi bi-arrow-left"></i> Back to Dashboard
+                </a>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- History -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5 class="mb-0">History & Comments</h5>
+            </div>
+            <div class="card-body">
+                {% if history.empty %}
+                    <p class="text-muted">No history available.</p>
+                {% else %}
+                    <div class="timeline">
+                        {% for index, record in history.iterrows() %}
+                        {% if record.role in ['Vendor', 'A1 Approver', 'A2 Approver'] %}
+                        <div class="mb-3 p-3 border-start border-3 border-primary bg-light">
+                            <div class="d-flex justify-content-between">
+                                <strong>
+                                    {% if record.role == 'Vendor' %}
+                                        Vendor Comment - Approval Status
+                                    {% elif record.role == 'A1 Approver' %}
+                                        A1 Approval - Decision
+                                    {% elif record.role == 'A2 Approver' %}
+                                        A2 Final Approval - Decision
+                                    {% else %}
+                                        {{ record.action }}
+                                    {% endif %}
+                                </strong>
+                                <small class="text-muted">{{ record.action_date }}</small>
+                            </div>
+                            <div class="text-muted small">
+                                By: {{ record.action_by }} ({{ record.role }})
+                            </div>
+                            {% if record.comment %}
+                            <div class="mt-2">
+                                <em>"{{ record.comment }}"</em>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -119,15 +160,15 @@
                 <h5><i class="bi bi-info-circle"></i> Submission Guidelines</h5>
                 <ul class="small">
                     <li>Review the contract details carefully</li>
-                    <li>Review all required items/deliverables</li>
-                    <li>Provide a competitive bid amount</li>
-                    <li>Include detailed proposal information</li>
-                    <li>Ensure all information is accurate</li>
-                    <li>Submit before the deadline</li>
+                    <li>Confirm you understand the requested deliverables</li>
+                    <li>Summarise your approach or key commitments</li>
+                    <li>Highlight any critical assumptions or risks</li>
+                    <li>Ensure the comment is clear and concise</li>
+                    <li>Submit once you are ready for A1 approval</li>
                 </ul>
                 <hr>
                 <p class="small mb-0">
-                    <strong>Note:</strong> Once submitted, you cannot edit your bid.
+                    <strong>Note:</strong> Once submitted, the bid moves to A1 approval.
                 </p>
             </div>
         </div>
@@ -139,8 +180,7 @@
             <div class="card-body">
                 <p class="small mb-1"><strong>Company:</strong> {{ vendor.vendor_name }}</p>
                 <p class="small mb-1"><strong>Email:</strong> {{ vendor.contact_email }}</p>
-                <p class="small mb-1"><strong>Phone:</strong> {{ vendor.contact_phone }}</p>
-                <p class="small mb-0"><strong>Rating:</strong> {{ vendor.technical_capability }}/5</p>
+                <p class="small mb-0"><strong>Phone:</strong> {{ vendor.contact_phone }}</p>
             </div>
         </div>
     </div>

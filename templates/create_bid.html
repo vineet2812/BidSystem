@@ -32,16 +32,20 @@
                         </div>
 
                         <div class="col-md-6 mb-3">
-                            <label for="min_technical_capability" class="form-label">Minimum Technical Capability</label>
-                            <select class="form-select" id="min_technical_capability" name="min_technical_capability">
-                                <option value="0">No Requirement</option>
-                                <option value="1">1 - Basic</option>
-                                <option value="2">2 - Below Average</option>
-                                <option value="3">3 - Average</option>
-                                <option value="4">4 - Above Average</option>
-                                <option value="5">5 - Expert/Top Tier</option>
+                            <label for="assigned_vendor_id" class="form-label">Assign Vendor *</label>
+                            <select class="form-select" id="assigned_vendor_id" name="assigned_vendor_id" required>
+                                <option value="">Select vendor...</option>
+                                {% for vendor in vendors %}
+                                <option value="{{ vendor.vendor_id }}">{{ vendor.vendor_id }} - {{ vendor.vendor_name }}</option>
+                                {% endfor %}
                             </select>
-                            <div class="form-text">Only vendors meeting this rating can bid</div>
+                            {% if not vendors %}
+                            <div class="alert alert-warning mt-2 mb-0">
+                                <i class="bi bi-info-circle"></i> No vendors available. Please register a vendor before creating a bid.
+                            </div>
+                            {% else %}
+                            <div class="form-text">Assigned vendor will provide the response for this bid.</div>
+                            {% endif %}
                         </div>
                     </div>
 
@@ -103,14 +107,14 @@
                     Creating a new bid will make it available for vendors to submit their proposals.
                 </p>
                 <hr>
-                <h6>Technical Capability</h6>
+                <h6>Assigned Vendor</h6>
                 <p class="small">
-                    Set minimum rating to filter qualified vendors. Vendors below this rating won't see the bid.
+                    Choose the vendor responsible for this opportunity. The vendor receives a task to submit their comment for approval.
                 </p>
                 <hr>
                 <h6>Bid Items</h6>
                 <p class="small">
-                    Add specific items/deliverables to provide clear requirements to vendors.
+                    Add specific items/deliverables to provide clear requirements.
                 </p>
             </div>
         </div>

@@ -48,6 +48,7 @@ def normalize_bid_record(bid_record):
         'selected_vendor_id',
         'selected_submission_id',
         'admin_justification',
+        'vendor_comment',
         'submission_date',
         'a1_comment',
         'a1_date',
@@ -91,10 +92,6 @@ def prepare_vendor_bids(bid_id):
         vendor = db.get_vendor_by_id(vid)
         if vendor:
             vendor_lookup[vid] = vendor
-
-    vendor_bids['technical_capability'] = vendor_bids['vendor_id'].map(
-        lambda vid: vendor_lookup.get(vid, {}).get('technical_capability', 'N/A')
-    )
 
     return vendor_bids, vendor_lookup
 
@@ -189,7 +186,6 @@ def vendor_login_page():
             session['vendor_id'] = vendor['vendor_id']
             session['vendor_name'] = vendor['vendor_name']
             session['user_name'] = vendor['vendor_name']
-            session['technical_capability'] = vendor['technical_capability']
             flash(f'Welcome, {vendor["vendor_name"]}!', 'success')
             return redirect(url_for('vendor_dashboard'))
         else:
@@ -204,16 +200,14 @@ def vendor_register():
         vendor_name = request.form['vendor_name']
         contact_email = request.form['contact_email']
         contact_phone = request.form['contact_phone']
-        technical_capability = int(request.form['technical_capability'])
         password = request.form['password']
         
-        vendor_id = db.create_vendor(vendor_name, contact_email, contact_phone, technical_capability, password)
+        vendor_id = db.create_vendor(vendor_name, contact_email, contact_phone, password)
         
         # Auto login after registration
         session['vendor_id'] = vendor_id
         session['vendor_name'] = vendor_name
         session['user_name'] = vendor_name
-        session['technical_capability'] = technical_capability
         
         flash(f'Registration successful! Your Vendor ID is: {vendor_id}', 'success')
         return redirect(url_for('vendor_dashboard'))
@@ -226,7 +220,6 @@ def vendor_logout():
     if 'vendor_id' in session:
         del session['vendor_id']
         del session['vendor_name']
-        del session['technical_capability']
     flash('Logged out successfully!', 'success')
     return redirect(url_for('vendor_login_page'))
 
@@ -238,6 +231,28 @@ def admin_dashboard():
         return redirect(url_for('index'))
     
     bids = db.get_all_bids()
+    
+    # Enrich bids with vendor information
+    if not bids.empty:
+        vendor_names = []
+        vendor_contacts = []
+        for index, bid in bids.iterrows():
+            vendor_id = str(bid.get('selected_vendor_id', '')).strip()
+            if vendor_id:
+                vendor = db.get_vendor_by_id(vendor_id)
+                if vendor:
+                    vendor_names.append(vendor.get('vendor_name', ''))
+                    vendor_contacts.append(vendor.get('contact_email', ''))
+                else:
+                    vendor_names.append('')
+                    vendor_contacts.append('')
+            else:
+                vendor_names.append('')
+                vendor_contacts.append('')
+        
+        bids['vendor_name'] = vendor_names
+        bids['vendor_contact'] = vendor_contacts
+    
     return render_template('admin_dashboard.html', bids=bids, role=session.get('role'))
 
 @app.route('/admin/create_bid', methods=['GET', 'POST'])
@@ -246,15 +261,26 @@ def create_bid():
     if session.get('role') != 'Admin':
         flash('Access denied. Admin role required.', 'danger')
         return redirect(url_for('index'))
+
+    vendors_df = db.get_all_vendors()
+    vendors = vendors_df.to_dict('records') if not vendors_df.empty else []
     
     if request.method == 'POST':
         contract_name = request.form['contract_name']
         contract_description = request.form['contract_description']
         contract_value = float(request.form['contract_value'])
-        min_technical_capability = int(request.form.get('min_technical_capability', 0))
+        assigned_vendor_id = request.form.get('assigned_vendor_id', '').strip()
         admin_name = session.get('user_name', 'Admin')
         
-        bid_id = db.create_bid(contract_name, contract_description, contract_value, admin_name, min_technical_capability)
+        if not assigned_vendor_id:
+            flash('Please assign a vendor for this bid.', 'danger')
+            return render_template('create_bid.html', role=session.get('role'), vendors=vendors)
+
+        if not any(v['vendor_id'] == assigned_vendor_id for v in vendors):
+            flash('Selected vendor could not be found. Please choose a valid vendor.', 'danger')
+            return render_template('create_bid.html', role=session.get('role'), vendors=vendors)
+
+        bid_id = db.create_bid(contract_name, contract_description, contract_value, admin_name, assigned_vendor_id)
         
         # Add bid items if provided
         item_names = request.form.getlist('item_name[]')
@@ -266,11 +292,14 @@ def create_bid():
             if item_names[i]:  # Only add if item name is provided
                 db.add_bid_item(bid_id, item_names[i], item_descriptions[i], 
                               float(quantities[i]) if quantities[i] else 0, units[i])
-        
-        flash(f'Bid {bid_id} created successfully!', 'success')
+
+        selected_vendor = next((v for v in vendors if v.get('vendor_id') == assigned_vendor_id), None)
+        vendor_label = selected_vendor['vendor_name'] if selected_vendor else assigned_vendor_id
+
+        flash(f'Bid {bid_id} created and assigned to {vendor_label}!', 'success')
         return redirect(url_for('admin_dashboard'))
-    
-    return render_template('create_bid.html', role=session.get('role'))
+
+    return render_template('create_bid.html', role=session.get('role'), vendors=vendors)
 
 @app.route('/admin/view_bid/<bid_id>')
 def admin_view_bid(bid_id):
@@ -285,21 +314,18 @@ def admin_view_bid(bid_id):
         return redirect(url_for('admin_dashboard'))
 
     bid = normalize_bid_record(raw_bid)
-    vendor_bids, vendors_lookup = prepare_vendor_bids(bid_id)
-    selected_vendor_bid = get_selected_submission(bid, vendor_bids)
     history = db.get_history_for_bid(bid_id)
     items = db.get_items_for_bid(bid_id)
 
-    selected_vendor_contact = {}
-    if not selected_vendor_bid.empty:
-        selected_vendor_contact = vendors_lookup.get(selected_vendor_bid.iloc[0]['vendor_id'], {})
+    assigned_vendor = None
+    assigned_vendor_id = str(bid.get('selected_vendor_id', '')).strip()
+    if assigned_vendor_id:
+        assigned_vendor = db.get_vendor_by_id(assigned_vendor_id)
 
     return render_template(
         'admin_view_bid.html',
         bid=bid,
-        vendor_bids=vendor_bids,
-        selected_vendor_bid=selected_vendor_bid,
-        selected_vendor_contact=selected_vendor_contact,
+        assigned_vendor=assigned_vendor,
         history=history,
         items=items,
         role=session.get('role')
@@ -339,16 +365,26 @@ def vendor_dashboard():
         return redirect(url_for('vendor_login_page'))
     
     bids = db.get_all_bids()
-    vendor_technical_capability = session.get('technical_capability', 0)
-    
-    # Filter bids that are open for bidding and meet technical capability requirement
-    open_bids = bids[
-        (bids['status'] == 'Open for Bidding') & 
-        (bids['min_technical_capability'] <= vendor_technical_capability)
-    ]
-    
-    return render_template('vendor_dashboard.html', bids=open_bids, role=session.get('role'),
-                          vendor_capability=vendor_technical_capability)
+    vendor_id = session.get('vendor_id', '')
+
+    if bids.empty:
+        assigned_bids = bids
+    else:
+        bids = bids.copy()
+        if 'selected_vendor_id' not in bids.columns:
+            bids['selected_vendor_id'] = ''
+        if 'vendor_comment' not in bids.columns:
+            bids['vendor_comment'] = ''
+        if 'submission_date' not in bids.columns:
+            bids['submission_date'] = ''
+        if 'status' not in bids.columns:
+            bids['status'] = ''
+        assigned_bids = bids[bids['selected_vendor_id'].astype(str).str.strip() == str(vendor_id).strip()]
+
+    if bids.empty:
+        assigned_bids = bids
+
+    return render_template('vendor_dashboard.html', bids=assigned_bids, role=session.get('role'))
 
 @app.route('/vendor/view_bid/<bid_id>')
 def vendor_view_bid(bid_id):
@@ -369,9 +405,17 @@ def vendor_view_bid(bid_id):
     bid = normalize_bid_record(raw_bid)
     items = db.get_items_for_bid(bid_id)
     vendor = db.get_vendor_by_id(session.get('vendor_id'))
+    history = db.get_history_for_bid(bid_id)
+
+    assigned_vendor_id = str(bid.get('selected_vendor_id', '')).strip()
+    if assigned_vendor_id != str(session.get('vendor_id', '')).strip():
+        flash('You are not assigned to this bid.', 'danger')
+        return redirect(url_for('vendor_dashboard'))
+
+    can_submit = bid.get('status') in {'Awaiting Vendor', 'Draft', 'Under Review'}
     
     return render_template('vendor_view_bid.html', bid=bid, items=items, 
-                          vendor=vendor, role=session.get('role'))
+                          vendor=vendor, history=history, role=session.get('role'), can_submit=can_submit)
 
 @app.route('/vendor/submit_bid/<bid_id>', methods=['POST'])
 def submit_bid(bid_id):
@@ -381,12 +425,18 @@ def submit_bid(bid_id):
         return redirect(url_for('index'))
     
     vendor_id = session.get('vendor_id')
-    vendor_name = session.get('vendor_name')
-    bid_amount = float(request.form['bid_amount'])
-    bid_description = request.form['bid_description']
-    
-    submission_id = db.submit_vendor_bid(bid_id, vendor_id, vendor_name, bid_amount, bid_description)
-    flash(f'Bid submitted successfully! Submission ID: {submission_id}', 'success')
+    vendor_comment = request.form.get('vendor_comment', '').strip()
+
+    if not vendor_comment:
+        flash('Please provide a comment before submitting.', 'danger')
+        return redirect(url_for('vendor_view_bid', bid_id=bid_id))
+
+    success, error = db.vendor_submit_comment(bid_id, vendor_id, vendor_comment)
+    if not success:
+        flash(error, 'danger')
+        return redirect(url_for('vendor_view_bid', bid_id=bid_id))
+
+    flash('Response submitted successfully! Bid sent to A1 approval.', 'success')
     
     return redirect(url_for('vendor_dashboard'))
 
@@ -420,13 +470,15 @@ def a1_view_bid(bid_id):
         flash('This bid has not been submitted for approval yet!', 'warning')
         return redirect(url_for('a1_dashboard'))
     
-    vendor_bids, _ = prepare_vendor_bids(bid_id)
     history = db.get_history_for_bid(bid_id)
     items = db.get_items_for_bid(bid_id)
-    selected_vendor_bid = get_selected_submission(bid, vendor_bids)
+    assigned_vendor = None
+    assigned_vendor_id = str(bid.get('selected_vendor_id', '')).strip()
+    if assigned_vendor_id:
+        assigned_vendor = db.get_vendor_by_id(assigned_vendor_id)
     
-    return render_template('a1_view_bid.html', bid=bid, vendor_bid=selected_vendor_bid, 
-                          vendor_bids=vendor_bids, history=history, items=items, role=session.get('role'))
+    return render_template('a1_view_bid.html', bid=bid, assigned_vendor=assigned_vendor,
+                          history=history, items=items, role=session.get('role'))
 
 @app.route('/a1/approve/<bid_id>', methods=['POST'])
 def a1_approve_bid(bid_id):
@@ -501,13 +553,15 @@ def a2_view_bid(bid_id):
         flash('This bid has not been approved by A1 yet!', 'warning')
         return redirect(url_for('a2_dashboard'))
     
-    vendor_bids, _ = prepare_vendor_bids(bid_id)
     history = db.get_history_for_bid(bid_id)
     items = db.get_items_for_bid(bid_id)
-    selected_vendor_bid = get_selected_submission(bid, vendor_bids)
+    assigned_vendor = None
+    assigned_vendor_id = str(bid.get('selected_vendor_id', '')).strip()
+    if assigned_vendor_id:
+        assigned_vendor = db.get_vendor_by_id(assigned_vendor_id)
     
-    return render_template('a2_view_bid.html', bid=bid, vendor_bid=selected_vendor_bid, 
-                          vendor_bids=vendor_bids, history=history, items=items, role=session.get('role'))
+    return render_template('a2_view_bid.html', bid=bid, assigned_vendor=assigned_vendor,
+                          history=history, items=items, role=session.get('role'))
 
 @app.route('/a2/approve/<bid_id>', methods=['POST'])
 def a2_approve_bid(bid_id):
@@ -669,9 +723,14 @@ def download_pdf(bid_id):
     y = draw_field(c, y, "Contract Name", bid['contract_name'])
     y = draw_field(c, y, "Description", bid['contract_description'])
     y = draw_field(c, y, "Contract Value", f"${bid['contract_value']:,.2f}")
-    y = draw_field(c, y, "Min Technical Capability Required", f"{bid['min_technical_capability']}/5" if bid['min_technical_capability'] > 0 else "Not Specified")
     y = draw_field(c, y, "Created By", bid['admin_name'])
     y = draw_field(c, y, "Created Date", bid['created_date'])
+    assigned_vendor = db.get_vendor_by_id(selected_vendor_id) if selected_vendor_id else None
+    if assigned_vendor:
+        assigned_vendor_label = f"{assigned_vendor.get('vendor_name', 'N/A')} ({selected_vendor_id})"
+    else:
+        assigned_vendor_label = "Not Assigned"
+    y = draw_field(c, y, "Assigned Vendor", assigned_vendor_label)
     y -= 0.2*inch
     
     # Bid Items
@@ -712,9 +771,6 @@ def download_pdf(bid_id):
                 c.showPage()
                 y = draw_header(c, height) - 0.3*inch
             
-            vendor_info = vendors_dict.get(vb['vendor_id'], {})
-            tech_cap = vendor_info.get('technical_capability', 'N/A')
-            
             is_selected_vendor = False
             if selected_submission_id:
                 is_selected_vendor = str(vb['submission_id']).strip() == selected_submission_id
@@ -737,8 +793,7 @@ def download_pdf(bid_id):
             
             # Vendor details in two columns
             c.setFont("Helvetica", 9)
-            c.drawString(1.2*inch, y, f"Technical Rating: {tech_cap}/5")
-            c.drawString(3.5*inch, y, f"Bid Amount: ${vb['bid_amount']:,.2f}")
+            c.drawString(1.2*inch, y, f"Bid Amount: ${vb['bid_amount']:,.2f}")
             y -= 0.2*inch
             
             # Proposal Summary
@@ -780,7 +835,7 @@ def download_pdf(bid_id):
         c.drawString(1*inch, y, "No vendor submissions received.")
         y -= 0.3*inch
     
-    # Selected Vendor Summary
+    # Selected Vendor Summary / Assigned Vendor Response
     if not vendor_bids.empty and not selected_vendor.empty:
         if y < 2.5*inch:
             c.showPage()
@@ -791,16 +846,32 @@ def download_pdf(bid_id):
         vendor_info = vendors_dict.get(selected_row['vendor_id'], {})
         raw_summary = sanitize_excel_value(selected_row.get('bid_description'), '')
         proposal_summary = raw_summary if raw_summary else "No proposal summary provided"
+        vendor_comment = bid.get('vendor_comment') or proposal_summary
 
         y = draw_field(c, y, "Submission ID", selected_row['submission_id'])
         y = draw_field(c, y, "Vendor ID", selected_row['vendor_id'])
         y = draw_field(c, y, "Vendor Name", selected_row['vendor_name'])
-        y = draw_field(c, y, "Technical Rating", f"{vendor_info.get('technical_capability', 'N/A')}/5")
-        y = draw_field(c, y, "Bid Amount", f"${selected_row['bid_amount']:,.2f}")
-        y = draw_field(c, y, "Proposal Summary", proposal_summary)
+        bid_amount_value = selected_row['bid_amount'] if 'bid_amount' in selected_row else None
+        if bid_amount_value is not None and bid_amount_value == bid_amount_value:
+            y = draw_field(c, y, "Bid Amount", f"${bid_amount_value:,.2f}")
+        y = draw_field(c, y, "Proposal Summary", vendor_comment)
         y = draw_field(c, y, "Submission Date", selected_row['submission_date'])
         y = draw_field(c, y, "Contact Email", vendor_info.get('contact_email', 'N/A'))
         y = draw_field(c, y, "Contact Phone", vendor_info.get('contact_phone', 'N/A'))
+        y -= 0.1*inch
+    else:
+        if y < 2.5*inch:
+            c.showPage()
+            y = draw_header(c, height) - 0.3*inch
+
+        y = draw_section(c, y, "4. ASSIGNED VENDOR RESPONSE")
+        vendor_name = assigned_vendor.get('vendor_name') if assigned_vendor else None
+        y = draw_field(c, y, "Vendor ID", selected_vendor_id or 'Not Assigned')
+        y = draw_field(c, y, "Vendor Name", vendor_name or 'Not Assigned')
+        y = draw_field(c, y, "Contact Email", (assigned_vendor or {}).get('contact_email', 'N/A'))
+        y = draw_field(c, y, "Contact Phone", (assigned_vendor or {}).get('contact_phone', 'N/A'))
+        y = draw_field(c, y, "Vendor Comment", bid.get('vendor_comment') or 'No comment submitted yet')
+        y = draw_field(c, y, "Submitted On", bid.get('submission_date') or 'Not submitted')
         y -= 0.1*inch
 
     # Check if we need a new page
@@ -808,9 +879,9 @@ def download_pdf(bid_id):
         c.showPage()
         y = draw_header(c, height) - 0.3*inch
     
-    # Admin Justification
-    y = draw_section(c, y, "5. ADMIN SELECTION JUSTIFICATION")
-    y = draw_field(c, y, "Justification", bid['admin_justification'])
+    # Admin Notes
+    y = draw_section(c, y, "5. ADMIN NOTES")
+    y = draw_field(c, y, "Notes", bid['admin_justification'])
     y = draw_field(c, y, "Submitted for Approval", bid['submission_date'])
     y -= 0.2*inch
     

@@ -25,7 +25,7 @@
                             <th>Bid ID</th>
                             <th>Contract Name</th>
                             <th>Contract Value</th>
-                            <th>Winning Submission</th>
+                            <th>Assigned Vendor</th>
                             <th>A1 Status</th>
                             <th>Status</th>
                             <th>Actions</th>
@@ -38,15 +38,15 @@
                             <td>{{ bid.contract_name }}</td>
                             <td>${{ "{:,.2f}".format(bid.contract_value) }}</td>
                             <td>
-                                {% set submission_candidate = bid.selected_submission_id if bid.selected_submission_id is defined else '' %}
-                                {% set submission_id = (submission_candidate|string).strip() %}
-                                {% if submission_id and submission_id|lower != 'nan' and submission_id|lower != 'nat' %}
-                                    <div><strong>{{ submission_id }}</strong></div>
-                                    <div class="small text-muted">{{ bid.selected_vendor_id }}</div>
+                                {% set vendor_candidate = bid.selected_vendor_id if bid.selected_vendor_id is defined else '' %}
+                                {% set vendor_id = (vendor_candidate|string).strip() %}
+                                {% if vendor_id and vendor_id|lower not in ['nan', 'nat'] %}
+                                    <div><strong>{{ vendor_id }}</strong></div>
+                                    {% if bid.vendor_comment %}
+                                    <div class="small text-muted">{{ bid.vendor_comment[:40] }}{% if bid.vendor_comment|length > 40 %}...{% endif %}</div>
+                                    {% endif %}
                                 {% else %}
-                                    {% set vendor_candidate = bid.selected_vendor_id if bid.selected_vendor_id is defined else '' %}
-                                    {% set vendor_id = (vendor_candidate|string).strip() %}
-                                    {{ vendor_id if vendor_id and vendor_id|lower != 'nan' else '-' }}
+                                    -
                                 {% endif %}
                             </td>
                             <td>
@@ -55,7 +55,9 @@
                                 </span>
                             </td>
                             <td>
-                                {% if bid.status == 'Pending A2' %}
+                                {% if bid.status == 'Awaiting Vendor' %}
+                                    <span class="badge bg-info status-badge">{{ bid.status }}</span>
+                                {% elif bid.status == 'Pending A2' %}
                                     <span class="badge bg-danger status-badge">{{ bid.status }} ⚠️</span>
                                 {% elif bid.status == 'Approved' %}
                                     <span class="badge bg-success status-badge">{{ bid.status }}</span>
