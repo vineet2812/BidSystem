@@ -464,11 +464,6 @@ def a1_view_bid(bid_id):
         return redirect(url_for('a1_dashboard'))
 
     bid = normalize_bid_record(raw_bid)
-
-    # Check if bid has been submitted for approval
-    if bid['status'] not in ['Pending A1', 'Pending A2', 'Approved', 'Rejected']:
-        flash('This bid has not been submitted for approval yet!', 'warning')
-        return redirect(url_for('a1_dashboard'))
     
     history = db.get_history_for_bid(bid_id)
     items = db.get_items_for_bid(bid_id)
@@ -547,10 +542,8 @@ def a2_view_bid(bid_id):
         return redirect(url_for('index'))
     
     bid = db.get_bid_by_id(bid_id)
-    
-    # Check if bid has been approved by A1
-    if bid['status'] not in ['Pending A2', 'Approved', 'Rejected']:
-        flash('This bid has not been approved by A1 yet!', 'warning')
+    if not bid:
+        flash('Bid not found.', 'danger')
         return redirect(url_for('a2_dashboard'))
     
     history = db.get_history_for_bid(bid_id)
