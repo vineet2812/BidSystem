@@ -40,30 +40,78 @@
         <!-- Bid Items -->
         {% if not items.empty %}
         <div class="card mb-3">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="bi bi-list-ul"></i> Bid Items</h5>
+            <div class="card-header bg-info text-white">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-list-ul"></i> Bid Items with Bidder Rates</h5>
+                    <span class="badge bg-light text-dark">{{ num_bidders }} bidder(s)</span>
+                </div>
             </div>
             <div class="card-body">
                 <div class="table-responsive">
-                    <table class="table table-sm">
-                        <thead>
+                    <table class="table table-bordered table-sm">
+                        <thead class="table-light">
                             <tr>
-                                <th>Item</th>
-                                <th>Description</th>
-                                <th>Quantity</th>
-                                <th>Unit</th>
+                                <th rowspan="2" class="align-middle">Item</th>
+                                <th rowspan="2" class="align-middle">Description</th>
+                                <th rowspan="2" class="align-middle text-end">Qty</th>
+                                <th rowspan="2" class="align-middle">Unit</th>
+                                {% if bidder_submissions %}
+                                    <th colspan="{{ num_bidders * 2 }}" class="text-center bg-info text-white">Bidder Rates</th>
+                                {% endif %}
                             </tr>
+                            {% if bidder_submissions %}
+                            <tr>
+                                {% for submission in bidder_submissions %}
+                                    <th class="text-center">
+                                        {{ submission.bidder_name }}
+                                        <br><small>Rate</small>
+                                    </th>
+                                    <th class="text-center">
+                                        <small>Total</small>
+                                    </th>
+                                {% endfor %}
+                            </tr>
+                            {% endif %}
                         </thead>
                         <tbody>
                             {% for index, item in items.iterrows() %}
                             <tr>
                                 <td>{{ item.item_name }}</td>
                                 <td>{{ item.item_description }}</td>
-                                <td>{{ item.quantity }}</td>
+                                <td class="text-end">{{ item.quantity }}</td>
                                 <td>{{ item.unit }}</td>
+                                {% if bidder_submissions %}
+                                    {% for submission in bidder_submissions %}
+                                        {% set item_found = namespace(rate=0, total=0) %}
+                                        {% for bid_item in submission.bid_items %}
+                                            {% if bid_item.item_id == item.item_id %}
+                                                {% set item_found.rate = bid_item.unit_rate %}
+                                                {% set item_found.total = bid_item.total %}
+                                            {% endif %}
+                                        {% endfor %}
+                                        <td class="text-end">
+                                            ${{ "{:,.2f}".format(item_found.rate) }}
+                                        </td>
+                                        <td class="text-end">
+                                            ${{ "{:,.2f}".format(item_found.total) }}
+                                        </td>
+                                    {% endfor %}
+                                {% endif %}
                             </tr>
                             {% endfor %}
                         </tbody>
+                        {% if bidder_submissions %}
+                        <tfoot class="table-light">
+                            <tr>
+                                <td colspan="4" class="text-end"><strong>TOTALS:</strong></td>
+                                {% for submission in bidder_submissions %}
+                                    <td colspan="2" class="text-center">
+                                        <strong>${{ "{:,.2f}".format(submission.total_bid_amount) }}</strong>
+                                    </td>
+                                {% endfor %}
+                            </tr>
+                        </tfoot>
+                        {% endif %}
                     </table>
                 </div>
             </div>
@@ -186,7 +234,7 @@
                                                   placeholder="Enter rejection reason..."></textarea>
                                     </div>
                                     <button type="submit" class="btn btn-danger w-100">
-                                        <i class="bi bi-x-circle"></i> Reject & Send to Vendor
+                                        <i class="bi bi-x-circle"></i> Reject & Send to Buyer
                                     </button>
                                 </form>
                             </div>

@@ -16,7 +16,7 @@ app = Flask(__name__)
 app.secret_key = 'your-secret-key-change-this-in-production'
 
 # Role management
-ROLES = ['Vendor', 'Buyer', 'A1 Approver', 'A2 Approver']
+ROLES = ['Vendor', 'Buyer', 'Bidder', 'A1 Approver', 'A2 Approver']
 
 
 def _is_missing_excel_value(value):
@@ -140,6 +140,11 @@ def index():
         if 'buyer_id' not in session:
             return redirect(url_for('buyer_login_page'))
         return redirect(url_for('buyer_dashboard'))
+    elif role == 'Bidder':
+        # Check if bidder is logged in
+        if 'bidder_id' not in session:
+            return redirect(url_for('bidder_login_page'))
+        return redirect(url_for('bidder_dashboard'))
     elif role == 'A1 Approver':
         return redirect(url_for('a1_dashboard'))
     elif role == 'A2 Approver':
@@ -162,6 +167,12 @@ def switch_role(role):
                 del session['buyer_id']
                 del session['buyer_name']
             session['user_name'] = 'Buyer User'
+        elif role == 'Bidder':
+            # Clear bidder session when switching to bidder role
+            if 'bidder_id' in session:
+                del session['bidder_id']
+                del session['bidder_name']
+            session['user_name'] = 'Bidder User'
         elif role == 'A1 Approver':
             session['user_name'] = 'A1 Approver'
         elif role == 'A2 Approver':
@@ -222,6 +233,136 @@ def buyer_logout():
         del session['buyer_name']
     flash('Logged out successfully!', 'success')
     return redirect(url_for('buyer_login_page'))
+
+# Bidder Login/Registration Routes
+@app.route('/bidder/login', methods=['GET', 'POST'])
+def bidder_login_page():
+    """Bidder login page"""
+    bidders_df = db.get_all_bidders()
+    bidders = bidders_df.to_dict('records') if not bidders_df.empty else []
+    
+    if request.method == 'POST':
+        bidder_id = request.form['bidder_id']
+        
+        bidder = db.get_bidder_by_id(bidder_id)
+        if bidder:
+            session['bidder_id'] = bidder['bidder_id']
+            session['bidder_name'] = bidder['bidder_name']
+            session['user_name'] = bidder['bidder_name']
+            flash(f'Welcome, {bidder["bidder_name"]}!', 'success')
+            return redirect(url_for('bidder_dashboard'))
+        else:
+            flash('Invalid bidder selection!', 'danger')
+    
+    return render_template('bidder_login.html', role=session.get('role'), bidders=bidders)
+
+@app.route('/bidder/register', methods=['GET', 'POST'])
+def bidder_register():
+    """Bidder registration page"""
+    if request.method == 'POST':
+        bidder_name = request.form['bidder_name']
+        contact_email = request.form['contact_email']
+        contact_phone = request.form['contact_phone']
+        password = request.form['password']
+        
+        bidder_id = db.create_bidder(bidder_name, contact_email, contact_phone, password)
+        
+        # Auto login after registration
+        session['bidder_id'] = bidder_id
+        session['bidder_name'] = bidder_name
+        session['user_name'] = bidder_name
+        
+        flash(f'Registration successful! Your Bidder ID is: {bidder_id}', 'success')
+        return redirect(url_for('bidder_dashboard'))
+    
+    return render_template('bidder_register.html', role=session.get('role'))
+
+@app.route('/bidder/logout')
+def bidder_logout():
+    """Bidder logout"""
+    if 'bidder_id' in session:
+        del session['bidder_id']
+        del session['bidder_name']
+    flash('Logged out successfully!', 'success')
+    return redirect(url_for('bidder_login_page'))
+
+@app.route('/bidder/dashboard')
+def bidder_dashboard():
+    """Bidder Dashboard - shows all bids available for bidding"""
+    if session.get('role') != 'Bidder':
+        flash('Access denied. Bidder role required.', 'danger')
+        return redirect(url_for('index'))
+    
+    if 'bidder_id' not in session:
+        flash('Please login first!', 'warning')
+        return redirect(url_for('bidder_login_page'))
+    
+    bids = db.get_all_bids()
+    bidder_id = session.get('bidder_id', '')
+    
+    # Add submission status for each bid
+    if not bids.empty:
+        bids = bids.copy()
+        has_submitted = []
+        for _, bid in bids.iterrows():
+            submission = db.get_bidder_submission_for_bid(bid['bid_id'], bidder_id)
+            has_submitted.append(not submission.empty)
+        bids['has_submitted'] = has_submitted
+    
+    return render_template('bidder_dashboard.html', bids=bids, role=session.get('role'))
+
+@app.route('/bidder/submit_bid/<bid_id>', methods=['GET', 'POST'])
+def bidder_submit_bid(bid_id):
+    """Bidder submit item bids with unit rates"""
+    if session.get('role') != 'Bidder':
+        flash('Access denied. Bidder role required.', 'danger')
+        return redirect(url_for('index'))
+    
+    if 'bidder_id' not in session:
+        flash('Please login first!', 'warning')
+        return redirect(url_for('bidder_login_page'))
+    
+    bid = db.get_bid_by_id(bid_id)
+    if not bid:
+        flash('Bid not found.', 'danger')
+        return redirect(url_for('bidder_dashboard'))
+    
+    items = db.get_items_for_bid(bid_id)
+    if items.empty:
+        flash('No items found for this bid. Cannot submit.', 'warning')
+        return redirect(url_for('bidder_dashboard'))
+    
+    bidder_id = session.get('bidder_id')
+    
+    # Get existing submission if any
+    existing_submission = db.get_bidder_submission_for_bid(bid_id, bidder_id)
+    existing_rates = {}
+    if not existing_submission.empty:
+        for _, row in existing_submission.iterrows():
+            existing_rates[row['item_id']] = row['unit_rate']
+    
+    if request.method == 'POST':
+        item_rates = {}
+        for _, item in items.iterrows():
+            item_id = item['item_id']
+            unit_rate = request.form.get(f'unit_rate_{item_id}')
+            if unit_rate:
+                try:
+                    item_rates[item_id] = float(unit_rate)
+                except ValueError:
+                    flash(f'Invalid unit rate for {item["item_name"]}', 'danger')
+                    return redirect(url_for('bidder_submit_bid', bid_id=bid_id))
+        
+        if len(item_rates) != len(items):
+            flash('Please provide unit rates for all items.', 'danger')
+            return redirect(url_for('bidder_submit_bid', bid_id=bid_id))
+        
+        db.submit_bidder_item_bids(bid_id, bidder_id, item_rates)
+        flash('Bid submitted successfully!', 'success')
+        return redirect(url_for('bidder_dashboard'))
+    
+    return render_template('bidder_submit_bid.html', bid=bid, items=items, 
+                         role=session.get('role'), existing_rates=existing_rates)
 
 @app.route('/vendor/dashboard')
 def vendor_dashboard():
@@ -322,12 +463,18 @@ def vendor_view_bid(bid_id):
     if assigned_buyer_id:
         assigned_buyer = db.get_buyer_by_id(assigned_buyer_id)
 
+    # Get all bidder submissions
+    bidder_submissions = db.get_all_bidder_bids_with_totals(bid_id)
+    num_bidders = len(bidder_submissions)
+
     return render_template(
         'vendor_view_bid.html',
         bid=bid,
         assigned_buyer=assigned_buyer,
         history=history,
         items=items,
+        bidder_submissions=bidder_submissions,
+        num_bidders=num_bidders,
         role=session.get('role')
     )
 
@@ -414,8 +561,13 @@ def buyer_view_bid(bid_id):
 
     can_submit = bid.get('status') in {'Awaiting Buyer', 'Draft', 'Under Review'}
     
+    # Get all bidder submissions
+    bidder_submissions = db.get_all_bidder_bids_with_totals(bid_id)
+    num_bidders = len(bidder_submissions)
+    
     return render_template('buyer_view_bid.html', bid=bid, items=items, 
-                          buyer=buyer, history=history, role=session.get('role'), can_submit=can_submit)
+                          buyer=buyer, history=history, role=session.get('role'), can_submit=can_submit,
+                          bidder_submissions=bidder_submissions, num_bidders=num_bidders)
 
 @app.route('/buyer/submit_bid/<bid_id>', methods=['POST'])
 def submit_bid(bid_id):
@@ -472,8 +624,13 @@ def a1_view_bid(bid_id):
     if assigned_buyer_id:
         assigned_buyer = db.get_buyer_by_id(assigned_buyer_id)
     
+    # Get all bidder submissions
+    bidder_submissions = db.get_all_bidder_bids_with_totals(bid_id)
+    num_bidders = len(bidder_submissions)
+    
     return render_template('a1_view_bid.html', bid=bid, assigned_buyer=assigned_buyer,
-                          history=history, items=items, role=session.get('role'))
+                          history=history, items=items, role=session.get('role'),
+                          bidder_submissions=bidder_submissions, num_bidders=num_bidders)
 
 @app.route('/a1/approve/<bid_id>', methods=['POST'])
 def a1_approve_bid(bid_id):
@@ -553,8 +710,13 @@ def a2_view_bid(bid_id):
     if assigned_buyer_id:
         assigned_buyer = db.get_buyer_by_id(assigned_buyer_id)
     
+    # Get all bidder submissions
+    bidder_submissions = db.get_all_bidder_bids_with_totals(bid_id)
+    num_bidders = len(bidder_submissions)
+    
     return render_template('a2_view_bid.html', bid=bid, assigned_buyer=assigned_buyer,
-                          history=history, items=items, role=session.get('role'))
+                          history=history, items=items, role=session.get('role'),
+                          bidder_submissions=bidder_submissions, num_bidders=num_bidders)
 
 @app.route('/a2/approve/<bid_id>', methods=['POST'])
 def a2_approve_bid(bid_id):
@@ -630,23 +792,35 @@ def a2_reopen_bid(bid_id):
 
 @app.route('/download_pdf/<bid_id>')
 def download_pdf(bid_id):
-    """Download bid approval PDF - Accessible by all roles"""
+    """Download bid comparison PDF - Accessible by all roles"""
     bid = db.get_bid_by_id(bid_id)
     if not bid:
         flash('Bid not found.', 'danger')
         return redirect(url_for('index'))
     
-    if bid['status'] != 'Approved':
-        flash('PDF download only available for approved bids!', 'danger')
-        return redirect(url_for('index'))
-    
     bid = normalize_bid_record(bid)
-    buyer_bids, buyers_dict = prepare_buyer_bids(bid_id)
-    selected_buyer = get_selected_submission(bid, buyer_bids)
-    selected_submission_id = str(sanitize_excel_value(bid.get('selected_submission_id'), '')).strip()
-    selected_buyer_id = str(sanitize_excel_value(bid.get('selected_buyer_id'), '')).strip()
     history = db.get_history_for_bid(bid_id)
     items = db.get_items_for_bid(bid_id)
+    
+    # Get bidder submissions for each item
+    bidder_submissions = {}
+    all_bidders = set()
+    if not items.empty:
+        for _, item in items.iterrows():
+            item_bids = db.get_bidder_bids_for_item(bid_id, item['item_id'])
+            bidder_submissions[item['item_id']] = item_bids
+            if not item_bids.empty:
+                for _, bid_sub in item_bids.iterrows():
+                    all_bidders.add(bid_sub['bidder_id'])
+    
+    # Get bidder names
+    bidder_names = {}
+    for bidder_id in all_bidders:
+        bidder = db.get_bidder_by_id(bidder_id)
+        if bidder:
+            bidder_names[bidder_id] = bidder['bidder_name']
+        else:
+            bidder_names[bidder_id] = bidder_id
     
     # Create Professional PDF
     buffer = io.BytesIO()
@@ -659,7 +833,7 @@ def download_pdf(bid_id):
         canvas_obj.rect(0, y_start - 0.8*inch, width, 0.8*inch, fill=1)
         canvas_obj.setFillColorRGB(1, 1, 1)
         canvas_obj.setFont("Helvetica-Bold", 20)
-        canvas_obj.drawCentredString(width/2, y_start - 0.5*inch, "BID APPROVAL DOCUMENT")
+        canvas_obj.drawCentredString(width/2, y_start - 0.5*inch, "BID COMPARISON REPORT")
         canvas_obj.setFillColorRGB(0, 0, 0)
         return y_start - 1*inch
     
@@ -677,7 +851,7 @@ def download_pdf(bid_id):
         return y_pos - 0.3*inch
     
     def draw_field(canvas_obj, y_pos, label, value, bold_label=True):
-        """Draw a label-value pair with automatic wrapping"""
+        """Draw a label-value pair"""
         label_font = "Helvetica-Bold" if bold_label else "Helvetica"
         value_font = "Helvetica"
         font_size = 10
@@ -690,21 +864,10 @@ def download_pdf(bid_id):
         value_str = str(value) if value not in (None, "") else "N/A"
         label_width = canvas_obj.stringWidth(label_text, label_font, font_size) if label_text else 0
         value_x = 1 * inch + label_width + (0.12 * inch if label_text else 0)
-        max_width_points = width - value_x - 0.75 * inch
-        max_width_points = max(max_width_points, 2 * inch)
-
-        approx_char_width = canvas_obj.stringWidth("X", value_font, font_size) or 5
-        max_chars_per_line = max(int(max_width_points / approx_char_width), 10)
-
-        wrapped_lines = textwrap.wrap(value_str, max_chars_per_line) or [value_str]
+        
         canvas_obj.setFont(value_font, font_size)
-
-        current_y = y_pos
-        for idx, line in enumerate(wrapped_lines):
-            if idx > 0:
-                current_y -= 0.18 * inch
-            canvas_obj.drawString(value_x, current_y, line)
-        return current_y - 0.25 * inch
+        canvas_obj.drawString(value_x, y_pos, value_str)
+        return y_pos - 0.25 * inch
     
     # PAGE 1
     y = draw_header(c, height)
@@ -718,72 +881,231 @@ def download_pdf(bid_id):
     y = draw_field(c, y, "Contract Value", f"${bid['contract_value']:,.2f}")
     y = draw_field(c, y, "Created By", bid['vendor_name'])
     y = draw_field(c, y, "Created Date", bid['created_date'])
+    y = draw_field(c, y, "Status", bid['status'])
+    
+    # Get assigned buyer info
+    selected_buyer_id = str(sanitize_excel_value(bid.get('selected_buyer_id'), '')).strip()
     assigned_buyer = db.get_buyer_by_id(selected_buyer_id) if selected_buyer_id else None
     if assigned_buyer:
         assigned_buyer_label = f"{assigned_buyer.get('buyer_name', 'N/A')} ({selected_buyer_id})"
     else:
         assigned_buyer_label = "Not Assigned"
     y = draw_field(c, y, "Assigned Buyer", assigned_buyer_label)
-    y -= 0.2*inch
+    y -= 0.3*inch
     
-    # Bid Items
-    if not items.empty:
-        y = draw_section(c, y, "2. BID ITEMS")
+    # Bid Items and Comparison in Tabular Form
+    if not items.empty and all_bidders:
+        if y < 5*inch:
+            c.showPage()
+            y = draw_header(c, height) - 0.3*inch
+            
+        y = draw_section(c, y, "2. BID ITEMS & BIDDER COMPARISON")
+        y -= 0.2*inch
+        
+        # Calculate column widths based on number of bidders
+        bidders_list = sorted(list(all_bidders))
+        num_bidders = len(bidders_list)
+        
+        # Improved table layout
+        item_col_width = 2.5*inch
+        qty_col_width = 0.4*inch
+        unit_col_width = 0.6*inch
+        available_width = width - 2*0.75*inch - item_col_width - qty_col_width - unit_col_width
+        bidder_col_width = available_width / num_bidders if num_bidders > 0 else 1.5*inch
+        
+        x_start = 0.75*inch
+        table_width = width - 1.5*inch
+        
+        # Draw table header with better styling
+        header_height = 0.5*inch
+        c.setFillColorRGB(0.2, 0.3, 0.5)  # Dark blue header
+        c.rect(x_start, y - header_height, table_width, header_height, fill=1, stroke=1)
+        c.setFillColorRGB(1, 1, 1)  # White text
         c.setFont("Helvetica-Bold", 9)
-        c.drawString(1*inch, y, "Item")
-        c.drawString(3*inch, y, "Description")
-        c.drawString(5*inch, y, "Quantity")
-        c.drawString(6*inch, y, "Unit")
-        y -= 0.15*inch
-        c.setFont("Helvetica", 9)
+        
+        x = x_start + 0.05*inch
+        # Multi-line header for Item column
+        c.drawString(x, y - 0.2*inch, "Item Name")
+        c.setFont("Helvetica-Bold", 8)
+        c.drawString(x, y - 0.35*inch, "Description")
+        
+        x += item_col_width
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(x, y - 0.27*inch, "Qty")
+        
+        x += qty_col_width
+        c.drawString(x, y - 0.27*inch, "Unit")
+        
+        x += unit_col_width
+        
+        # Bidder columns with better formatting
+        c.setFont("Helvetica-Bold", 8)
+        for bidder_id in bidders_list:
+            bidder_name = bidder_names.get(bidder_id, bidder_id)
+            # Smart truncation
+            if len(bidder_name) > 18:
+                bidder_name = bidder_name[:15] + "..."
+            c.drawString(x + 0.05*inch, y - 0.18*inch, bidder_name)
+            c.setFont("Helvetica", 7)
+            c.drawString(x + 0.05*inch, y - 0.35*inch, "Rate | Total")
+            c.setFont("Helvetica-Bold", 8)
+            x += bidder_col_width
+        
+        y -= (header_height + 0.05*inch)
+        
+        # Draw items rows with improved formatting
         for idx, item in items.iterrows():
             if y < 1.5*inch:
                 c.showPage()
                 y = draw_header(c, height) - 0.3*inch
-            c.drawString(1*inch, y, str(item['item_name'])[:20])
-            c.drawString(3*inch, y, str(item['item_description'])[:20])
-            c.drawString(5*inch, y, str(item['quantity']))
-            c.drawString(6*inch, y, str(item['unit']))
-            y -= 0.2*inch
-        y -= 0.2*inch
+                # Redraw header on new page
+                c.setFillColorRGB(0.2, 0.3, 0.5)
+                c.rect(x_start, y - header_height, table_width, header_height, fill=1, stroke=1)
+                c.setFillColorRGB(1, 1, 1)
+                c.setFont("Helvetica-Bold", 9)
+                x = x_start + 0.05*inch
+                c.drawString(x, y - 0.2*inch, "Item Name")
+                c.setFont("Helvetica-Bold", 8)
+                c.drawString(x, y - 0.35*inch, "Description")
+                x += item_col_width
+                c.setFont("Helvetica-Bold", 9)
+                c.drawString(x, y - 0.27*inch, "Qty")
+                x += qty_col_width
+                c.drawString(x, y - 0.27*inch, "Unit")
+                x += unit_col_width
+                c.setFont("Helvetica-Bold", 8)
+                for bidder_id in bidders_list:
+                    bidder_name = bidder_names.get(bidder_id, bidder_id)
+                    if len(bidder_name) > 18:
+                        bidder_name = bidder_name[:15] + "..."
+                    c.drawString(x + 0.05*inch, y - 0.18*inch, bidder_name)
+                    c.setFont("Helvetica", 7)
+                    c.drawString(x + 0.05*inch, y - 0.35*inch, "Rate | Total")
+                    c.setFont("Helvetica-Bold", 8)
+                    x += bidder_col_width
+                y -= (header_height + 0.05*inch)
+            
+            row_height = 0.45*inch
+            
+            # Draw row background with alternating colors
+            if idx % 2 == 0:
+                c.setFillColorRGB(0.97, 0.97, 0.97)
+            else:
+                c.setFillColorRGB(1, 1, 1)
+            c.rect(x_start, y - row_height, table_width, row_height, fill=1, stroke=0)
+            
+            # Draw row border
+            c.setFillColorRGB(0, 0, 0)
+            c.setStrokeColorRGB(0.7, 0.7, 0.7)
+            c.setLineWidth(0.5)
+            c.rect(x_start, y - row_height, table_width, row_height, fill=0, stroke=1)
+            c.setStrokeColorRGB(0, 0, 0)
+            c.setLineWidth(1)
+            
+            x = x_start + 0.05*inch
+            
+            # Item name and description with better formatting
+            c.setFont("Helvetica-Bold", 9)
+            item_name = str(item['item_name'])
+            if len(item_name) > 35:
+                item_name = item_name[:32] + "..."
+            c.drawString(x, y - 0.17*inch, item_name)
+            
+            c.setFont("Helvetica", 7)
+            item_desc = str(item['item_description'])
+            if len(item_desc) > 45:
+                item_desc = item_desc[:42] + "..."
+            c.drawString(x, y - 0.32*inch, item_desc)
+            
+            x += item_col_width
+            
+            # Quantity
+            c.setFont("Helvetica", 9)
+            c.drawString(x, y - 0.25*inch, f"{item['quantity']}")
+            x += qty_col_width
+            
+            # Unit
+            unit_text = str(item['unit'])
+            if len(unit_text) > 6:
+                unit_text = unit_text[:5] + "."
+            c.drawString(x, y - 0.25*inch, unit_text)
+            x += unit_col_width
+            
+            # Bidder rates with better formatting
+            item_bids = bidder_submissions.get(item['item_id'])
+            for bidder_id in bidders_list:
+                rate_text = "N/A"
+                total_text = ""
+                
+                if item_bids is not None and not item_bids.empty:
+                    bidder_bid = item_bids[item_bids['bidder_id'] == bidder_id]
+                    if not bidder_bid.empty:
+                        unit_rate = float(bidder_bid.iloc[0]['unit_rate'])
+                        total = unit_rate * float(item['quantity'])
+                        rate_text = f"${unit_rate:,.2f}"
+                        total_text = f"${total:,.2f}"
+                
+                c.setFont("Helvetica-Bold", 8)
+                c.drawString(x + 0.05*inch, y - 0.17*inch, rate_text)
+                if total_text:
+                    c.setFont("Helvetica", 7)
+                    c.setFillColorRGB(0.3, 0.3, 0.3)
+                    c.drawString(x + 0.05*inch, y - 0.32*inch, total_text)
+                    c.setFillColorRGB(0, 0, 0)
+                
+                x += bidder_col_width
+            
+            y -= row_height
+        
+        # Add total row
+        c.setFillColorRGB(0.9, 0.9, 0.9)
+        total_row_height = 0.35*inch
+        c.rect(x_start, y - total_row_height, table_width, total_row_height, fill=1, stroke=1)
+        c.setFillColorRGB(0, 0, 0)
+        
+        x = x_start + 0.05*inch
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(x, y - 0.22*inch, "TOTAL BID AMOUNTS:")
+        
+        x = x_start + item_col_width + qty_col_width + unit_col_width
+        
+        # Calculate and show totals for each bidder
+        for bidder_id in bidders_list:
+            total_amount = 0
+            if not items.empty:
+                for _, item in items.iterrows():
+                    item_bids = bidder_submissions.get(item['item_id'])
+                    if item_bids is not None and not item_bids.empty:
+                        bidder_bid = item_bids[item_bids['bidder_id'] == bidder_id]
+                        if not bidder_bid.empty:
+                            unit_rate = float(bidder_bid.iloc[0]['unit_rate'])
+                            total_amount += unit_rate * float(item['quantity'])
+            
+            c.setFont("Helvetica-Bold", 9)
+            c.drawString(x + 0.05*inch, y - 0.22*inch, f"${total_amount:,.2f}")
+            x += bidder_col_width
+        
+        y -= (total_row_height + 0.3*inch)
     
     # Check if we need a new page
-    if y < 3*inch:
-        c.showPage()
-        y = draw_header(c, height) - 0.3*inch
-    
-    # Assigned Buyer Response
-    if y < 2.5*inch:
-        c.showPage()
-        y = draw_header(c, height) - 0.3*inch
-
-    y = draw_section(c, y, "3. ASSIGNED BUYER RESPONSE")
-    buyer_name = assigned_buyer.get('buyer_name') if assigned_buyer else None
-    y = draw_field(c, y, "Buyer ID", selected_buyer_id or 'Not Assigned')
-    y = draw_field(c, y, "Buyer Name", buyer_name or 'Not Assigned')
-    y = draw_field(c, y, "Contact Email", (assigned_buyer or {}).get('contact_email', 'N/A'))
-    y = draw_field(c, y, "Contact Phone", (assigned_buyer or {}).get('contact_phone', 'N/A'))
-    y = draw_field(c, y, "Buyer Comment", bid.get('buyer_comment') or 'No comment submitted yet')
-    y = draw_field(c, y, "Submitted On", bid.get('submission_date') or 'Not submitted')
-    y -= 0.1*inch
-
-    # Check if we need a new page
-    if y < 3*inch:
+    if y < 4*inch:
         c.showPage()
         y = draw_header(c, height) - 0.3*inch
     
     # Approval Workflow
-    y = draw_section(c, y, "4. APPROVAL WORKFLOW")
+    y = draw_section(c, y, "3. APPROVAL WORKFLOW")
+    y -= 0.1*inch
     
-    # Buyer Submission
-    c.setFont("Helvetica-Bold", 11)
-    c.drawString(1*inch, y, "Buyer Submission")
-    y -= 0.2*inch
-    buyer_name = assigned_buyer.get('buyer_name') if assigned_buyer else 'N/A'
-    y = draw_field(c, y, "Buyer", buyer_name)
-    y = draw_field(c, y, "Comment", bid.get('buyer_comment') or 'No comment submitted')
-    y = draw_field(c, y, "Submitted On", bid.get('submission_date') or 'Not submitted')
-    y -= 0.2*inch
+    # Buyer Comments
+    buyer_comment = bid.get('buyer_comment', '').strip()
+    if buyer_comment:
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(1*inch, y, "Buyer Comments")
+        y -= 0.2*inch
+        y = draw_field(c, y, "Buyer", assigned_buyer_label if assigned_buyer else "N/A")
+        y = draw_field(c, y, "Comment", buyer_comment)
+        y = draw_field(c, y, "Submitted On", bid.get('submission_date') or 'Not submitted')
+        y -= 0.2*inch
     
     # A1 Approval
     c.setFont("Helvetica-Bold", 11)
@@ -803,48 +1125,90 @@ def download_pdf(bid_id):
     y = draw_field(c, y, "Date", bid['a2_date'])
     y -= 0.3*inch
     
-    # Final Status
-    c.setFillColorRGB(0, 0.5, 0)
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(1*inch, y, f"FINAL STATUS: {bid['status']}")
-    c.setFillColorRGB(0, 0, 0)
-    y -= 0.5*inch
+    # Final Status Box
+    final_status = bid.get('status', 'Unknown')
     
-    # Check if we need a new page for history
-    if y < 3*inch or not history.empty:
+    # Determine status color
+    status_color = (0.9, 0.9, 0.9)  # Default gray
+    if final_status == 'Approved':
+        status_color = (0.2, 0.7, 0.3)  # Green
+    elif final_status == 'Rejected':
+        status_color = (0.8, 0.2, 0.2)  # Red
+    elif final_status in ['Pending', 'Submitted', 'Under Review']:
+        status_color = (0.95, 0.7, 0.2)  # Orange
+    
+    # Draw final status box with border
+    box_width = 3*inch
+    box_height = 0.5*inch
+    x_center = (width - box_width) / 2
+    
+    # Draw outer border (darker)
+    c.setStrokeColorRGB(0, 0, 0)
+    c.setLineWidth(2)
+    c.setFillColorRGB(*status_color)
+    c.rect(x_center, y - box_height, box_width, box_height, fill=1, stroke=1)
+    
+    # Draw text
+    c.setFillColorRGB(1, 1, 1)  # White text
+    c.setFont("Helvetica-Bold", 14)
+    text_width = c.stringWidth(f"FINAL STATUS: {final_status.upper()}", "Helvetica-Bold", 14)
+    c.drawString(x_center + (box_width - text_width) / 2, y - 0.32*inch, f"FINAL STATUS: {final_status.upper()}")
+    
+    # Reset colors
+    c.setFillColorRGB(0, 0, 0)
+    c.setStrokeColorRGB(0, 0, 0)
+    c.setLineWidth(1)
+    
+    y -= (box_height + 0.3*inch)
+    
+    # Check if we need a new page for audit trail
+    if y < 3*inch:
         c.showPage()
         y = draw_header(c, height) - 0.3*inch
     
-    # Complete History
-    y = draw_section(c, y, "5. COMPLETE AUDIT TRAIL")
-    c.setFont("Helvetica", 8)
-    for idx, record in history.iterrows():
-        if y < 1.5*inch:
-            c.showPage()
-            y = draw_header(c, height) - 0.3*inch
-        c.setFont("Helvetica-Bold", 9)
-        c.drawString(1*inch, y, f"{record['action_date']} - {record['action']}")
-        y -= 0.15*inch
+    # Audit Trail
+    y = draw_section(c, y, "4. AUDIT TRAIL")
+    y -= 0.1*inch
+    
+    if not history.empty:
         c.setFont("Helvetica", 8)
-        c.drawString(1.2*inch, y, f"By: {record['action_by']} ({record['role']})")
-        y -= 0.12*inch
-        if record['comment']:
-            c.drawString(1.2*inch, y, f"Comment: {record['comment']}")
+        for idx, record in history.iterrows():
+            if y < 1.5*inch:
+                c.showPage()
+                y = draw_header(c, height) - 0.3*inch
+            
+            c.setFont("Helvetica-Bold", 9)
+            c.drawString(1*inch, y, f"{record['action_date']} - {record['action']}")
+            y -= 0.15*inch
+            c.setFont("Helvetica", 8)
+            c.drawString(1.2*inch, y, f"By: {record['action_by']} ({record['role']})")
             y -= 0.12*inch
-        if record['previous_status'] or record['new_status']:
-            c.drawString(1.2*inch, y, f"Status: {record['previous_status']} → {record['new_status']}")
-            y -= 0.12*inch
-        y -= 0.1*inch
+            if record['comment']:
+                comment_str = str(record['comment'])
+                if len(comment_str) > 80:
+                    comment_str = comment_str[:77] + "..."
+                c.drawString(1.2*inch, y, f"Comment: {comment_str}")
+                y -= 0.12*inch
+            if record['previous_status'] or record['new_status']:
+                prev_status = record['previous_status'] if record['previous_status'] else 'None'
+                new_status = record['new_status'] if record['new_status'] else 'None'
+                c.drawString(1.2*inch, y, f"Status: {prev_status} → {new_status}")
+                y -= 0.12*inch
+            y -= 0.1*inch
+    else:
+        c.setFont("Helvetica-Oblique", 9)
+        c.drawString(1*inch, y, "No audit trail records found")
+        y -= 0.3*inch
     
     # Footer
     c.setFont("Helvetica", 8)
     c.drawString(0.75*inch, 0.5*inch, f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    c.drawRightString(width - 0.75*inch, 0.5*inch, f"Document: {bid['bid_id']}_Approval.pdf")
+    c.drawRightString(width - 0.75*inch, 0.5*inch, f"Document: {bid['bid_id']}_Comparison.pdf")
     
     c.save()
     buffer.seek(0)
     
-    return send_file(buffer, as_attachment=True, download_name=f"bid_{bid_id}_approval.pdf", 
+    return send_file(buffer, as_attachment=True, download_name=f"bid_{bid_id}_comparison.pdf", 
                      mimetype='application/pdf')
 
 if __name__ == '__main__':

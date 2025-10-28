@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Bidder Dashboard{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-speedometer2"></i> Bidder Dashboard</h2>
+    <a href="{{ url_for('bidder_logout') }}" class="btn btn-outline-danger">
+        <i class="bi bi-box-arrow-right"></i> Logout
+    </a>
+</div>
+
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i> Welcome, <strong>{{ session.bidder_name }}</strong>! 
+    Browse available bids and submit your unit rates for items.
+</div>
+
+<h4 class="mb-3">Available Bids</h4>
+
+{% if bids is not none and not bids.empty %}
+<div class="table-responsive">
+    <table class="table table-hover">
+        <thead class="table-light">
+            <tr>
+                <th>Bid ID</th>
+                <th>Contract Name</th>
+                <th>Description</th>
+                <th>Contract Value</th>
+                <th>Status</th>
+                <th>Submission Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for index, bid in bids.iterrows() %}
+            <tr>
+                <td><strong>{{ bid.bid_id }}</strong></td>
+                <td>{{ bid.contract_name }}</td>
+                <td>{{ bid.contract_description[:50] }}...</td>
+                <td>${{ "{:,.2f}".format(bid.contract_value) }}</td>
+                <td>
+                    <span class="badge 
+                        {% if bid.status == 'Draft' %}bg-secondary
+                        {% elif bid.status == 'Awaiting Buyer' %}bg-primary
+                        {% elif bid.status == 'Pending A1' %}bg-warning
+                        {% elif bid.status == 'Pending A2' %}bg-info
+                        {% elif bid.status == 'Approved' %}bg-success
+                        {% else %}bg-danger
+                        {% endif %}">
+                        {{ bid.status }}
+                    </span>
+                </td>
+                <td>
+                    {% if bid.has_submitted %}
+                        <span class="badge bg-success"><i class="bi bi-check-circle"></i> Submitted</span>
+                    {% else %}
+                        <span class="badge bg-warning"><i class="bi bi-exclamation-circle"></i> Not Submitted</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="{{ url_for('bidder_submit_bid', bid_id=bid.bid_id) }}" 
+                       class="btn btn-sm btn-info">
+                        <i class="bi bi-pencil-square"></i> 
+                        {% if bid.has_submitted %}Edit Bid{% else %}Submit Bid{% endif %}
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-warning">
+    <i class="bi bi-exclamation-triangle"></i> No bids available at the moment.
+</div>
+{% endif %}
+
+<div class="card mt-4">
+    <div class="card-header bg-light">
+        <h5 class="mb-0"><i class="bi bi-info-circle"></i> Bidding Instructions</h5>
+    </div>
+    <div class="card-body">
+        <ul>
+            <li>Click on "Submit Bid" to enter unit rates for each item in the bid</li>
+            <li>You can edit your submission anytime before the bid closes</li>
+            <li>Click on "View All Bids" to see submissions from all bidders</li>
+            <li>Your total bid amount will be automatically calculated based on unit rates × quantities</li>
+            <li>At least <strong>two bidders</strong> must submit bids for competitive evaluation</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

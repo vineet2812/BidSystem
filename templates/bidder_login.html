@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Bidder Login{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card shadow">
+            <div class="card-header bg-info text-white">
+                <h4 class="mb-0"><i class="bi bi-box-arrow-in-right"></i> Bidder Login</h4>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label for="bidder_id" class="form-label">Select Your Bidder Account</label>
+                        <select class="form-select" id="bidder_id" name="bidder_id" required>
+                            <option value="">Choose a bidder...</option>
+                            {% for bidder in bidders %}
+                                <option value="{{ bidder.bidder_id }}">
+                                    {{ bidder.bidder_name }} ({{ bidder.bidder_id }})
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">Select your registered bidder account</div>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-info">
+                            <i class="bi bi-box-arrow-in-right"></i> Login
+                        </button>
+                    </div>
+                </form>
+                
+                <hr>
+                
+                <div class="text-center">
+                    <p class="mb-2">Don't have an account?</p>
+                    <a href="{{ url_for('bidder_register') }}" class="btn btn-outline-info">
+                        <i class="bi bi-person-plus"></i> Register as Bidder
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Bidder Registration{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card shadow">
+            <div class="card-header bg-info text-white">
+                <h4 class="mb-0"><i class="bi bi-person-plus"></i> Bidder Registration</h4>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label for="bidder_name" class="form-label">Company/Bidder Name *</label>
+                        <input type="text" class="form-control" id="bidder_name" name="bidder_name" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="contact_email" class="form-label">Contact Email *</label>
+                        <input type="email" class="form-control" id="contact_email" name="contact_email" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="contact_phone" class="form-label">Contact Phone *</label>
+                        <input type="tel" class="form-control" id="contact_phone" name="contact_phone" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Password *</label>
+                        <input type="password" class="form-control" id="password" name="password" required>
+                        <div class="form-text">Create a password for your account</div>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-info">
+                            <i class="bi bi-person-plus"></i> Register
+                        </button>
+                        <a href="{{ url_for('bidder_login_page') }}" class="btn btn-outline-secondary">
+                            <i class="bi bi-arrow-left"></i> Back to Login
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

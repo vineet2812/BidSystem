@@ -99,6 +99,25 @@ history_data = {
     'new_status': []
 }
 
+# Create Bidders sheet structure
+bidders_data = {
+    'bidder_id': ['BIDDER001', 'BIDDER002'],
+    'bidder_name': ['TechBid Solutions', 'Global Procurement Co'],
+    'contact_email': ['contact@techbid.com', 'info@globalprocure.com'],
+    'contact_phone': ['+1-800-555-1001', '+1-800-555-1002'],
+    'password': ['bidder1', 'bidder2']
+}
+
+# Create BidderItemBids sheet structure - stores unit rates for each item by each bidder
+bidder_item_bids_data = {
+    'bidder_bid_id': [],
+    'bid_id': [],
+    'bidder_id': [],
+    'item_id': [],
+    'unit_rate': [],
+    'submission_date': []
+}
+
 # Create Excel file with multiple sheets
 with pd.ExcelWriter('database.xlsx', engine='openpyxl') as writer:
     pd.DataFrame(bids_data).to_excel(writer, sheet_name='Bids', index=False)
@@ -106,6 +125,8 @@ with pd.ExcelWriter('database.xlsx', engine='openpyxl') as writer:
     pd.DataFrame(bid_items_data).to_excel(writer, sheet_name='BidItems', index=False)
     pd.DataFrame(vendor_bids_data).to_excel(writer, sheet_name='VendorBids', index=False)
     pd.DataFrame(history_data).to_excel(writer, sheet_name='History', index=False)
+    pd.DataFrame(bidders_data).to_excel(writer, sheet_name='Bidders', index=False)
+    pd.DataFrame(bidder_item_bids_data).to_excel(writer, sheet_name='BidderItemBids', index=False)
 
 print("database.xlsx created successfully!")
 print("\nDatabase Structure:")
@@ -114,3 +135,5 @@ print("2. Vendors Sheet: Stores vendor contact information and login credentials
 print("3. BidItems Sheet: Stores line items for each bid")
 print("4. VendorBids Sheet: Stores historical vendor submissions (legacy support)")
 print("5. History Sheet: Tracks all actions and comments throughout the approval process")
+print("6. Bidders Sheet: Stores bidder information and login credentials")
+print("7. BidderItemBids Sheet: Stores unit rates submitted by bidders for each item")

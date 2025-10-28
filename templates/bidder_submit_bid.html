@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block title %}Submit Bid{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-pencil-square"></i> Submit Bid</h2>
+    <a href="{{ url_for('bidder_dashboard') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Back to Dashboard
+    </a>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card shadow mb-4">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0">Bid Details</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Bid ID:</strong> {{ bid.bid_id }}</p>
+                        <p><strong>Contract Name:</strong> {{ bid.contract_name }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Contract Value:</strong> ${{ "{:,.2f}".format(bid.contract_value) }}</p>
+                        <p><strong>Status:</strong> 
+                            <span class="badge 
+                                {% if bid.status == 'Draft' %}bg-secondary
+                                {% elif bid.status == 'Awaiting Buyer' %}bg-primary
+                                {% elif bid.status == 'Pending A1' %}bg-warning
+                                {% elif bid.status == 'Pending A2' %}bg-info
+                                {% elif bid.status == 'Approved' %}bg-success
+                                {% else %}bg-danger
+                                {% endif %}">
+                                {{ bid.status }}
+                            </span>
+                        </p>
+                    </div>
+                </div>
+                <p><strong>Description:</strong> {{ bid.contract_description }}</p>
+            </div>
+        </div>
+
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-list-task"></i> Enter Unit Rates for Items</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" id="bidForm">
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Item Name</th>
+                                    <th>Description</th>
+                                    <th>Quantity</th>
+                                    <th>Unit</th>
+                                    <th>Unit Rate ($) *</th>
+                                    <th>Total ($)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for index, item in items.iterrows() %}
+                                <tr>
+                                    <td><strong>{{ item.item_name }}</strong></td>
+                                    <td>{{ item.item_description }}</td>
+                                    <td>{{ item.quantity }}</td>
+                                    <td>{{ item.unit }}</td>
+                                    <td>
+                                        <input type="number" 
+                                               step="0.01" 
+                                               min="0" 
+                                               class="form-control unit-rate" 
+                                               name="unit_rate_{{ item.item_id }}" 
+                                               id="rate_{{ item.item_id }}"
+                                               data-quantity="{{ item.quantity }}"
+                                               data-item-id="{{ item.item_id }}"
+                                               value="{% if item.item_id in existing_rates %}{{ existing_rates[item.item_id] }}{% endif %}"
+                                               required>
+                                    </td>
+                                    <td>
+                                        <strong class="item-total" id="total_{{ item.item_id }}">$0.00</strong>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                            <tfoot class="table-light">
+                                <tr>
+                                    <td colspan="5" class="text-end"><strong>GRAND TOTAL:</strong></td>
+                                    <td><strong id="grandTotal" class="text-success fs-5">$0.00</strong></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> <strong>Note:</strong> Enter the unit rate for each item. 
+                        The total will be automatically calculated as (Unit Rate × Quantity).
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-info btn-lg">
+                            <i class="bi bi-check-circle"></i> Submit Bid
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card shadow">
+            <div class="card-header bg-light">
+                <h6 class="mb-0"><i class="bi bi-calculator"></i> Bid Summary</h6>
+            </div>
+            <div class="card-body">
+                <p><strong>Total Items:</strong> {{ items|length }}</p>
+                <p><strong>Your Total Bid:</strong> <span id="summaryTotal" class="text-success fs-4">$0.00</span></p>
+                <hr>
+                <p class="small text-muted mb-0">
+                    <i class="bi bi-lightbulb"></i> Tip: Competitive pricing increases your chances of winning the bid!
+                </p>
+            </div>
+        </div>
+
+        <div class="card shadow mt-3">
+            <div class="card-header bg-light">
+                <h6 class="mb-0"><i class="bi bi-info-circle"></i> Submission Info</h6>
+            </div>
+            <div class="card-body">
+                <p class="small mb-0">
+                    • All fields are required<br>
+                    • You can edit your submission later<br>
+                    • At least 2 bidders must submit<br>
+                    • Lowest total usually wins
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Calculate totals dynamically
+    function calculateTotals() {
+        let grandTotal = 0;
+        
+        document.querySelectorAll('.unit-rate').forEach(input => {
+            const quantity = parseFloat(input.dataset.quantity) || 0;
+            const unitRate = parseFloat(input.value) || 0;
+            const itemTotal = quantity * unitRate;
+            const itemId = input.dataset.itemId;
+            
+            // Update item total
+            document.getElementById('total_' + itemId).textContent = '$' + itemTotal.toFixed(2);
+            
+            grandTotal += itemTotal;
+        });
+        
+        // Update grand total
+        document.getElementById('grandTotal').textContent = '$' + grandTotal.toFixed(2);
+        document.getElementById('summaryTotal').textContent = '$' + grandTotal.toFixed(2);
+    }
+    
+    // Add event listeners to all unit rate inputs
+    document.querySelectorAll('.unit-rate').forEach(input => {
+        input.addEventListener('input', calculateTotals);
+    });
+    
+    // Calculate on page load
+    calculateTotals();
+</script>
+{% endblock %}

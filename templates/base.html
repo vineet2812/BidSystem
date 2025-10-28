@@ -50,6 +50,10 @@
                            class="btn btn-sm {% if role == 'Buyer' %}btn-success{% else %}btn-outline-success{% endif %}">
                             Buyer
                         </a>
+                        <a href="{{ url_for('switch_role', role='Bidder') }}" 
+                           class="btn btn-sm {% if role == 'Bidder' %}btn-info{% else %}btn-outline-info{% endif %}">
+                            Bidder
+                        </a>
                         <a href="{{ url_for('switch_role', role='A1 Approver') }}" 
                            class="btn btn-sm {% if role == 'A1 Approver' %}btn-warning{% else %}btn-outline-warning{% endif %}">
                             A1 Approver

@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block title %}View All Bids{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-graph-up"></i> All Bidder Submissions</h2>
+    <div>
+        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Dashboard
+        </a>
+    </div>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-header bg-primary text-white">
+        <h5 class="mb-0">Bid Information</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <p><strong>Bid ID:</strong> {{ bid.bid_id }}</p>
+                <p><strong>Contract Name:</strong> {{ bid.contract_name }}</p>
+                <p><strong>Contract Value:</strong> ${{ "{:,.2f}".format(bid.contract_value) }}</p>
+            </div>
+            <div class="col-md-6">
+                <p><strong>Status:</strong> 
+                    <span class="badge 
+                        {% if bid.status == 'Draft' %}bg-secondary
+                        {% elif bid.status == 'Awaiting Buyer' %}bg-primary
+                        {% elif bid.status == 'Pending A1' %}bg-warning
+                        {% elif bid.status == 'Pending A2' %}bg-info
+                        {% elif bid.status == 'Approved' %}bg-success
+                        {% else %}bg-danger
+                        {% endif %}">
+                        {{ bid.status }}
+                    </span>
+                </p>
+                <p><strong>Number of Bidders:</strong> 
+                    <span class="badge {% if num_bidders >= 2 %}bg-success{% else %}bg-warning{% endif %}">
+                        {{ num_bidders }} bidder(s)
+                    </span>
+                    {% if num_bidders < 2 %}
+                        <small class="text-muted">(Minimum 2 required)</small>
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+        <p><strong>Description:</strong> {{ bid.contract_description }}</p>
+    </div>
+</div>
+
+{% if num_bidders == 0 %}
+<div class="alert alert-warning">
+    <i class="bi bi-exclamation-triangle"></i> <strong>No bids submitted yet.</strong> 
+    Waiting for bidders to submit their unit rates.
+</div>
+{% elif num_bidders < 2 %}
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i> <strong>Note:</strong> At least 2 bidders must submit bids for competitive evaluation. 
+    Currently {{ num_bidders }} bidder has submitted.
+</div>
+{% else %}
+<div class="alert alert-success">
+    <i class="bi bi-check-circle"></i> <strong>Good to go!</strong> 
+    {{ num_bidders }} bidders have submitted their bids. Ready for evaluation.
+</div>
+{% endif %}
+
+{% if bidder_submissions %}
+    {% for submission in bidder_submissions %}
+    <div class="card shadow mb-4 {% if loop.index == 1 %}border-success{% endif %}">
+        <div class="card-header {% if loop.index == 1 %}bg-success text-white{% else %}bg-light{% endif %}">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-building"></i> {{ submission.bidder_name }} ({{ submission.bidder_id }})
+                    {% if loop.index == 1 %}
+                        <span class="badge bg-warning text-dark ms-2">
+                            <i class="bi bi-trophy"></i> Lowest Bid
+                        </span>
+                    {% endif %}
+                </h5>
+                <h4 class="mb-0">
+                    <span class="badge {% if loop.index == 1 %}bg-warning text-dark{% else %}bg-primary{% endif %}">
+                        Total: ${{ "{:,.2f}".format(submission.total_bid_amount) }}
+                    </span>
+                </h4>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <p class="mb-1"><strong>Contact Email:</strong> {{ submission.contact_email }}</p>
+                    <p class="mb-0"><strong>Contact Phone:</strong> {{ submission.contact_phone }}</p>
+                </div>
+                <div class="col-md-6 text-end">
+                    <p class="mb-0"><strong>Submitted:</strong> {{ submission.submission_date }}</p>
+                </div>
+            </div>
+
+            <h6 class="mb-3"><i class="bi bi-list-check"></i> Item-wise Breakdown:</h6>
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Item</th>
+                            <th>Description</th>
+                            <th class="text-end">Quantity</th>
+                            <th>Unit</th>
+                            <th class="text-end">Unit Rate</th>
+                            <th class="text-end">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in submission.bid_items %}
+                        <tr>
+                            <td><strong>{{ item.item_name }}</strong></td>
+                            <td>{{ item.item_description }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(item.quantity) }}</td>
+                            <td>{{ item.unit }}</td>
+                            <td class="text-end">${{ "{:,.2f}".format(item.unit_rate) }}</td>
+                            <td class="text-end"><strong>${{ "{:,.2f}".format(item.total) }}</strong></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot class="table-light">
+                        <tr>
+                            <td colspan="5" class="text-end"><strong>TOTAL BID AMOUNT:</strong></td>
+                            <td class="text-end">
+                                <strong class="text-success fs-6">
+                                    ${{ "{:,.2f}".format(submission.total_bid_amount) }}
+                                </strong>
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+
+    <!-- Comparative Summary -->
+    <div class="card shadow border-info">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0"><i class="bi bi-bar-chart"></i> Comparative Summary</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Rank</th>
+                            <th>Bidder</th>
+                            <th>Contact</th>
+                            <th class="text-end">Total Bid Amount</th>
+                            <th class="text-end">Difference from Lowest</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% set lowest_bid = bidder_submissions[0].total_bid_amount if bidder_submissions else 0 %}
+                        {% for submission in bidder_submissions %}
+                        <tr {% if loop.index == 1 %}class="table-success"{% endif %}>
+                            <td>
+                                <strong>{{ loop.index }}</strong>
+                                {% if loop.index == 1 %}
+                                    <i class="bi bi-trophy-fill text-warning"></i>
+                                {% elif loop.index == 2 %}
+                                    <i class="bi bi-trophy-fill text-secondary"></i>
+                                {% elif loop.index == 3 %}
+                                    <i class="bi bi-trophy-fill" style="color: #CD7F32;"></i>
+                                {% endif %}
+                            </td>
+                            <td><strong>{{ submission.bidder_name }}</strong></td>
+                            <td>{{ submission.contact_email }}</td>
+                            <td class="text-end">
+                                <strong>${{ "{:,.2f}".format(submission.total_bid_amount) }}</strong>
+                            </td>
+                            <td class="text-end">
+                                {% set difference = submission.total_bid_amount - lowest_bid %}
+                                {% if difference == 0 %}
+                                    <span class="badge bg-success">Lowest</span>
+                                {% else %}
+                                    <span class="text-danger">+${{ "{:,.2f}".format(difference) }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if loop.index == 1 %}
+                                    <span class="badge bg-success">Best Price</span>
+                                {% elif difference / lowest_bid < 0.05 %}
+                                    <span class="badge bg-info">Competitive</span>
+                                {% else %}
+                                    <span class="badge bg-warning">Higher</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if num_bidders >= 2 %}
+            <div class="alert alert-success mt-3 mb-0">
+                <i class="bi bi-check-circle"></i> 
+                <strong>Recommendation:</strong> {{ bidder_submissions[0].bidder_name }} has submitted the lowest bid 
+                at ${{ "{:,.2f}".format(bidder_submissions[0].total_bid_amount) }}.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+{% else %}
+<div class="card">
+    <div class="card-body text-center py-5">
+        <i class="bi bi-inbox display-1 text-muted"></i>
+        <h4 class="mt-3">No Submissions Yet</h4>
+        <p class="text-muted">Bidders haven't submitted their bids yet. Check back later!</p>
+    </div>
+</div>
+{% endif %}
+
+<div class="card mt-4 border-warning">
+    <div class="card-header bg-warning">
+        <h6 class="mb-0"><i class="bi bi-info-circle"></i> Important Notes</h6>
+    </div>
+    <div class="card-body">
+        <ul class="mb-0">
+            <li><strong>Minimum Bidders:</strong> At least 2 bidders must submit for a valid competitive bid process</li>
+            <li><strong>Ranking:</strong> Bidders are automatically ranked by total bid amount (lowest to highest)</li>
+            <li><strong>Calculations:</strong> Total = Σ(Unit Rate × Quantity) for all items</li>
+            <li><strong>Visibility:</strong> This view is accessible to all roles (Vendor, Buyer, Bidder, A1, A2)</li>
+            <li><strong>Updates:</strong> Bidders can update their submissions until the bid is closed</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}
